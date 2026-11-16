@@ -4,6 +4,8 @@ import ssl
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlunsplit
 
+import certifi
+
 from api_sentinel.config_errors import ConfigurationError, config_url
 
 
@@ -34,12 +36,12 @@ def connection_options(value: str, require_tls: bool = False):
     if binding == "require" or parsed.scheme == "postgresql+psycopg":
         if "ssl" in params or mode == "disable":
             raise ConfigurationError("Channel-bound PostgreSQL requires verified TLS")
-        params.update(sslmode="verify-full", sslrootcert="system", channel_binding=binding)
+        params.update(sslmode="verify-full", sslrootcert=certifi.where(), channel_binding=binding)
         url = urlunsplit(parsed._replace(scheme="postgresql+psycopg", query=urlencode(params)))
         return url, options
 
     if require_tls or mode in ("require", "verify-full", "verify-ca"):
-        options["ssl"] = ssl.create_default_context()
+        options["ssl"] = ssl.create_default_context(cafile=certifi.where())
     elif mode == "disable":
         options["ssl"] = False
     url = urlunsplit(parsed._replace(query=urlencode(params)))

@@ -14,7 +14,7 @@ Adres wpiszesz bezpośrednio w panelu Render jako sekret `DATABASE_URL`, nie do 
 postgresql://USER:PASSWORD@DIRECT_NEON_HOST/sentinel?sslmode=require
 ```
 
-Zachowaj `channel_binding=require` i kodowanie hasła w URL. Aplikacja używa wtedy asynchronicznego psycopg 3 z weryfikacją certyfikatu i nazwy hosta (`verify-full`, systemowy magazyn CA). Dotychczasowe połączenia bez wymaganego channel binding nadal używają asyncpg. `DATABASE_URL_UNPOOLED`, jeśli ustawione, ma pierwszeństwo przed `DATABASE_URL` dla API, migracji i workera.
+Zachowaj `channel_binding=require` i kodowanie hasła w URL. Aplikacja używa wtedy asynchronicznego psycopg 3 z weryfikacją certyfikatu i nazwy hosta (`verify-full`, jawnie wskazany pakiet CA `certifi`). Dotychczasowe połączenia bez wymaganego channel binding nadal używają asyncpg. `DATABASE_URL_UNPOOLED`, jeśli ustawione, ma pierwszeństwo przed `DATABASE_URL` dla API, migracji i workera.
 
 ## 2. Przygotuj klucz szyfrowania webhooków
 

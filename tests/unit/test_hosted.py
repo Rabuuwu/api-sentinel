@@ -3,6 +3,7 @@ import ssl
 from types import SimpleNamespace
 from uuid import uuid4
 
+import certifi
 import pytest
 
 from api_sentinel.config import Settings
@@ -153,7 +154,7 @@ def test_neon_channel_binding_is_preserved():
     assert parsed.scheme == "postgresql+psycopg"
     assert parsed.password == "p%40ss"
     assert parse_qs(parsed.query) == {
-        "sslmode": ["verify-full"], "sslrootcert": ["system"], "channel_binding": ["require"]
+        "sslmode": ["verify-full"], "sslrootcert": [certifi.where()], "channel_binding": ["require"]
     }
 
 
@@ -196,3 +197,17 @@ def test_invalid_db_port_never_logs_value():
         connection_options("postgresql://user:password@host:accidental-secret/db")
     assert "accidental-secret" not in str(result.value)
     assert "password" not in str(result.value)
+
+
+def test_postgres_ca_bundle_is_explicit_and_loadable():
+    from urllib.parse import parse_qs, urlsplit
+
+    url, _ = connection_options(
+        "postgresql://user:pass@host/db?channel_binding=require&sslmode=require", True
+    )
+    params = parse_qs(urlsplit(url).query)
+    context = ssl.create_default_context(cafile=params["sslrootcert"][0])
+    assert context.get_ca_certs()
+    assert context.check_hostname
+    assert params["sslmode"] == ["verify-full"]
+    assert params["channel_binding"] == ["require"]
