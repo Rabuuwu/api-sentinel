@@ -138,6 +138,7 @@ class NotificationChannel(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(120))
     provider: Mapped[str] = mapped_column(String(20), default="discord")
+    webhook_ciphertext: Mapped[str | None] = mapped_column(String(4096))
     enabled: Mapped[bool] = mapped_column(default=True)
     on_down: Mapped[bool] = mapped_column(default=True)
     on_recovered: Mapped[bool] = mapped_column(default=True)

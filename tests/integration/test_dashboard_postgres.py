@@ -102,3 +102,67 @@ def test_real_metrics_events_and_public_redaction(tmp_path):
             await db.close()
 
     asyncio.run(run())
+
+
+def test_encrypted_channel_survives_api_restart_without_local_files(tmp_path):
+    url = os.getenv("SENTINEL_TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("Requires explicitly migrated isolated PostgreSQL sentinel_test")
+    parsed = make_url(url)
+    assert parsed.host in {"127.0.0.1", "localhost"} and parsed.database == "sentinel_test"
+    pytest.importorskip("cryptography")
+    from api_sentinel.models import NotificationChannel
+    from api_sentinel.vault import EncryptedVault
+
+    config = Settings(
+        url,
+        "integration-key-" + "x" * 40,
+        secrets_dir=str(tmp_path),
+        webhook_encryption_key="ab" * 32,
+    )
+
+    async def run():
+        from uuid import UUID
+
+        app = create_app(config)
+        channel_id = None
+        try:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app),
+                base_url="http://localhost",
+                headers={"X-API-Key": config.api_key},
+            ) as client:
+                created = await client.post(
+                    "/api/v1/notifications",
+                    json={
+                        "name": "Encrypted integration channel",
+                        "webhook_url": "https://discord.com/api/webhooks/123/test-token",
+                    },
+                )
+                assert created.status_code == 201
+                channel_id = UUID(created.json()["id"])
+                assert "test-token" not in created.text
+                assert "ciphertext" not in created.text
+            await app.state.db.close()
+            app = create_app(config)
+            async with app.state.db.sessions() as session:
+                channel = await session.get(NotificationChannel, channel_id)
+                assert channel.webhook_ciphertext
+                assert (
+                    EncryptedVault(config.webhook_encryption_key).decrypt(
+                        channel.id, channel.webhook_ciphertext
+                    )
+                    == "https://discord.com/api/webhooks/123/test-token"
+                )
+            assert list(tmp_path.iterdir()) == []
+        finally:
+            if channel_id:
+                async with app.state.db.sessions.begin() as session:
+                    await session.execute(
+                        NotificationChannel.__table__.delete().where(
+                            NotificationChannel.id == channel_id
+                        )
+                    )
+            await app.state.db.close()
+
+    asyncio.run(run())

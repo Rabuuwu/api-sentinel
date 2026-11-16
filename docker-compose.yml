@@ -8,6 +8,8 @@ x-app: &app
     RETENTION_DAYS: ${RETENTION_DAYS:-30}
     DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
     ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,[::1]}
+    CORS_ORIGINS: ${CORS_ORIGINS:-}
+    WEBHOOK_ENCRYPTION_KEY: ${WEBHOOK_ENCRYPTION_KEY:-}
     SECRETS_DIR: /secrets
   volumes:
     - webhook-secrets:/secrets

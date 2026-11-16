@@ -78,3 +78,9 @@ Dashboard React buduje Vite; w Compose serwuje go Nginx z proxy do FastAPI, a na
 Metryki: 60 przedziałów czasowych, okna 24h/7d/30d, poprzednie okno, percentyle `percentile_cont` z udanych i degraded odpowiedzi. DEGRADED to poprawna odpowiedź HTTP przekraczająca próg; wchodzi do uptime, ale nie potwierdza zdrowego recovery. Brak próbek daje null; przerwa pracy hosta nie tworzy fikcyjnych checków.
 
 Kanały i strony statusowe używają list UUID z walidacją istnienia po stronie API. Publiczny kontrakt jawnie wybiera tylko nazwy, statusy, uptime i czasy incydentów; nie serializuje obiektów administracyjnych. Timeline utrwala zmiany i dostarczenie alertu w transakcjach. Historyczne metryki pochodzą z checków; migracja nie wymyśla dawnych zdarzeń.
+
+## Opcjonalne wdrożenie Render Free / Neon / Pages
+
+GitHub Pages serwuje wyłącznie frontend; CORS na FastAPI dopuszcza dokładny origin. `hosted.py` wykonuje migrację, uruchamia API i worker jako dwa procesy jednej Web Service i zamyka oba przy utracie jednego. Free może usypiać tę usługę, przerywając monitoring. Domyślna architektura Compose nadal zachowuje osobne kontenery.
+
+Neon używa bezpośredniego endpointu i TLS z weryfikacją certyfikatu/hosta; transaction pooler jest niezgodny z sesyjnym advisory lock workera. Małe pule SQLAlchemy ograniczają liczbę połączeń. Nowe kanały w wariancie hosted używają ciphertext w PostgreSQL i osobnego klucza w środowisku Render. Instrukcja i ograniczenia: RENDER_NEON.md.

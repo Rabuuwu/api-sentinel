@@ -1,3 +1,19 @@
+# Aktualizacja: GitHub Pages + Render Free + Neon Free (2026-11-16)
+
+- Backend: pełny przebieg przed ostatnim testem integracyjnym **103 passed, 3 skipped**. Dodany następnie test trwałości zaszyfrowanego kanału również został jawnie pominięty bez testowej DB (łącznie obecnie 4 testy wymagają niedostępnych zależności/usług).
+- Frontend: **11 passed**; strict TypeScript, lokalny build i osobny build Pages zakończone powodzeniem. Build Pages używał jawnego przykładowego hosta, nie połączenia z produkcją.
+- Ruff: zaliczone. Mypy: brak błędów w 19 plikach. `git diff --check`: zaliczone.
+- SQL migracji 0001–0003 wygenerowany offline. Nie wykonano migracji na lokalnej bazie użytkownika ani Neon.
+- Nowe testy sprawdzają CORS, verified TLS, odrzucanie transaction poolera Neon, walidację klucza, zakończenie obydwu procesów przy awarii oraz porządkowanie po błędzie startu workera.
+- **Szyfrowanie niezweryfikowane lokalnie:** instalacja `cryptography>=46,<51` nie powiodła się; test realnego Fernet jest pominięty. Biblioteka jest zadeklarowana w zależnościach i ma być instalowana w CI/obrazie Render. Nie użyto zastępczej implementacji kryptografii.
+- Testy PostgreSQL nadal pominięte bez izolowanej bazy. Nowy test integracyjny sprawdza zapis kanału, restart API, odszyfrowanie z DB i brak plików sekretów.
+- Nie potwierdzono builda obrazu Docker, walidacji Blueprint przez Render, deployu na Render/Pages, połączenia z Neon ani przeglądarkowego E2E między originami. Te kroki wymagają zasobów/konta użytkownika.
+- Nie zmieniono DnDCompanion, realnego `.env`, danych lokalnych ani widoczności repozytorium.
+
+Instrukcja uruchomienia: [RENDER_NEON.md](RENDER_NEON.md). Poniżej zachowany raport historyczny; jego blokada npm/TypeScript została już usunięta.
+
+---
+
 # Weryfikacja 0.2 — 2026-11-13
 
 ## Wykonane

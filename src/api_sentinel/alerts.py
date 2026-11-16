@@ -11,7 +11,7 @@ from sqlalchemy import select
 from api_sentinel.config import Settings
 from api_sentinel.db import Database
 from api_sentinel.models import Alert, Incident, MonitorEvent, NotificationChannel, now
-from api_sentinel.vault import SecretVault
+from api_sentinel.vault import EncryptedVault, SecretVault
 
 logger = logging.getLogger("sentinel")
 
@@ -44,7 +44,12 @@ async def send_pending(db: Database, settings: Settings, transport=None, stop=No
                     channel_unavailable = True
                 else:
                     try:
-                        webhook = SecretVault(settings.secrets_dir).read(channel.id)
+                        if channel.webhook_ciphertext:
+                            webhook = EncryptedVault(settings.webhook_encryption_key).decrypt(
+                                channel.id, channel.webhook_ciphertext
+                            )
+                        else:
+                            webhook = SecretVault(settings.secrets_dir).read(channel.id)
                     except (OSError, ValueError):
                         channel_unavailable = True
             payload = {

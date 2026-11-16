@@ -53,3 +53,7 @@ Unikalny `(incident_id,event_type,channel)`; indeks `(delivery_state,next_attemp
 - `alert_outbox.incident_id` nullable dla testów, channel VARCHAR(80) mieści `discord:<UUID>`.
 
 Migracja zachowuje dotychczasowe pomiary. Backfill timeline tworzy jedynie MONITOR_CREATED na podstawie rzeczywistych dat. Downgrade usuwa nowe funkcje i testowe alerty, konwertuje DEGRADED do UP; wymaga wcześniejszego backupu. Retencja usuwa stare checki oraz powtarzalne zdarzenia błędów/degraded, zachowuje incydenty i zdarzenia administracyjne.
+
+## Migracja 0003 — trwałe szyfrowane webhooki
+
+`notification_channels.webhook_ciphertext VARCHAR(4096) NULL` przechowuje ciphertext Fernet powiązany z UUID kanału. Klucz nie jest w bazie. Wartość nigdy nie jest polem ChannelOut ani publicznego API. NULL zachowuje zgodność z lokalnym magazynem plikowym; migracja nie odczytuje ani nie przenosi plików. Downgrade usuwa ciphertext, dlatego wymaga wcześniejszego odtworzenia kanałów lub backupu.

@@ -4,6 +4,7 @@ from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from api_sentinel.config import Settings
+from api_sentinel.database_url import connection_options
 from api_sentinel.models import Base
 
 
@@ -14,7 +15,9 @@ def configure(connection):
 
 
 async def online():
-    engine = create_async_engine(Settings.from_env().database_url)
+    settings = Settings.from_env()
+    url, options = connection_options(settings.database_url, settings.hosted)
+    engine = create_async_engine(url, connect_args=options)
     try:
         async with engine.connect() as connection:
             await connection.run_sync(configure)

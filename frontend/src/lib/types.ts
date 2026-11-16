@@ -13,4 +13,4 @@ export interface Channel { id:string; name:string; provider:'discord'; enabled:b
 export interface Delivery { id:string; event_type:string; delivery_state:'PENDING'|'SENT'|'FAILED'; attempts:number; last_error_sanitized:string|null; created_at:string; }
 export interface StatusPage { id:string; name:string; slug:string; description:string; published:boolean; monitor_ids:string[]; }
 export interface PublicPage { name:string; description:string; updated_at:string|null; monitors:{name:string;status:Status;uptime:number|null;last_checked_at:string|null;incidents:{state:string;started_at:string;resolved_at:string|null}[]}[]; }
-export interface System {version:string; worker_alive:boolean; worker_last_seen:string|null; pending_alerts:number; failed_alerts:number; alert_channel:string; retention_days:number; max_monitors:number; location:string;}
+export interface System {hosting_notice?:string|null;version:string; worker_alive:boolean; worker_last_seen:string|null; pending_alerts:number; failed_alerts:number; alert_channel:string; retention_days:number; max_monitors:number; location:string;}

@@ -1,6 +1,6 @@
 # API Sentinel
 
-Lokalny, self-hosted monitoring HTTP/HTTPS z panelem WWW. PostgreSQL, API, worker i pliki strony działają na **Twojej maszynie**. Bez zewnętrznego hostingu, CDN, konta chmurowego i zewnętrznej bazy. Dostęp domyślnie tylko przez `127.0.0.1`.
+Monitoring HTTP/HTTPS z panelem WWW. Domyślny wariant lokalny uruchamia PostgreSQL, API, worker i stronę na Twojej maszynie. Opcjonalny wariant wybrany do hostingu: **GitHub Pages + Render Free + Neon Free** — instrukcja w [RENDER_NEON.md](RENDER_NEON.md). Render Free nie zapewnia ciągłego monitoringu podczas uśpienia.
 
 **Status: implementacja 0.2 z dashboardem React, częściowo zweryfikowana.** Testy jednostkowe przechodzą. Pełne uruchomienie API–PostgreSQL–worker oraz test przeglądarkowy wymagają weryfikacji poza obecną sesją; konkretne blokady opisuje [VERIFICATION.md](VERIFICATION.md). Nie traktuj obecności kodu ani workflow CI jako dowodu zaliczenia integracji.
 
@@ -141,3 +141,11 @@ Dla istniejącej instalacji: wykonaj kopię bazy, zainstaluj zależności fronte
 Sekrety kanałów zapisują się w prywatnym katalogu `SECRETS_DIR` (Compose: wolumen `webhook-secrets`). Backup musi obejmować bazę **i ten katalog**. Panel nigdy nie odczytuje zapisanego webhooka.
 
 Testy Reacta i rzeczywistego E2E: [frontend/README.md](frontend/README.md). Aktualny raport zmian, wyniki i blokady: [IMPLEMENTATION_REPORT.md](IMPLEMENTATION_REPORT.md), [VERIFICATION.md](VERIFICATION.md). Brak builda frontendu daje HTTP 503 na stronie głównej; samo uruchomienie API nie oznacza gotowego dashboardu.
+
+## Opcjonalny dashboard GitHub Pages
+
+Przygotowano oddzielny build Pages i workflow publikacji. API pozostaje osobną usługą HTTPS. Instrukcja, wymagania prywatnego repo oraz aktualne ograniczenia hostingu: [GITHUB_PAGES.md](GITHUB_PAGES.md). Nie oznacza to wykonanego wdrożenia. Lokalny launcher i Compose pozostają dostępne.
+
+## Wdrożenie Render Free + Neon
+
+Dodano `render.yaml`, launcher API/workera, TLS dla PostgreSQL i migrację `0003` dla zaszyfrowanych webhooków. Nie ma automatycznego przenoszenia lokalnych danych ani zmian w DnDCompanion. [Instrukcja krok po kroku](RENDER_NEON.md).

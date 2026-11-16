@@ -22,12 +22,23 @@ async def run(settings: Settings):
         asyncio.get_running_loop().add_signal_handler(sig, stop.set)
     try:
         async with db.engine.connect() as lock:
-            acquired = await lock.scalar(
-                text("SELECT pg_try_advisory_lock(:key)"), {"key": WORKER_LOCK}
-            )
-            await lock.commit()
-            if not acquired:
-                raise RuntimeError("Another API Sentinel worker already owns the scheduler")
+            deadline = asyncio.get_running_loop().time() + settings.worker_lock_wait_seconds
+            while True:
+                acquired = await lock.scalar(
+                    text("SELECT pg_try_advisory_lock(:key)"), {"key": WORKER_LOCK}
+                )
+                await lock.commit()
+                if acquired:
+                    break
+                if stop.is_set():
+                    return
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise RuntimeError("Another API Sentinel worker already owns the scheduler")
+                # Render may start a replacement before stopping the old deployment.
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=2)
+                except TimeoutError:
+                    pass
             await recover_abandoned(db)
             channel = "discord" if settings.discord_webhook_url else "console"
 

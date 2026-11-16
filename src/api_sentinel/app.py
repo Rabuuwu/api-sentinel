@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from sqlalchemy import func, select, text, tuple_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from api_sentinel.config import Settings
@@ -30,6 +31,7 @@ from api_sentinel.models import (
     Incident,
     Monitor,
     MonitorEvent,
+    NotificationChannel,
     WorkerHeartbeat,
     now,
 )
@@ -410,7 +412,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return {
             "version": "0.2.0",
-            "location": "Self-hosted",
+            "location": "Render" if settings.hosted else "Self-hosted",
+            "hosting_notice": (
+                "Free hosting may sleep. Measurements stop while the service is asleep."
+                if settings.hosted
+                else None
+            ),
             "retention_days": settings.retention_days,
             "max_monitors": settings.max_monitors,
             "worker_alive": fresh,
@@ -431,6 +438,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def ready():
         async with db.sessions() as session:
             await session.execute(select(Monitor).limit(1))
+            await session.execute(select(NotificationChannel).limit(1))
         return {"status": "ready"}
 
     @app.get("/legacy", include_in_schema=False)
@@ -453,4 +461,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         return FileResponse(root / "index.html")
 
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(settings.cors_origins),
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+            allow_headers=["X-API-Key", "Content-Type"],
+            expose_headers=["X-Request-ID"],
+            max_age=600,
+        )
     return app

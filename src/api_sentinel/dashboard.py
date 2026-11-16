@@ -23,7 +23,7 @@ from api_sentinel.models import (
     StatusPage,
     now,
 )
-from api_sentinel.vault import SecretVault
+from api_sentinel.vault import EncryptedVault, SecretVault
 
 
 async def validate_channels(session, ids):
@@ -221,7 +221,12 @@ def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings
         await session.flush()
         # Immutable secret per channel ID. Rollback may leave an unreferenced private file, never
         # change a live channel's credentials. Rotate by creating/reassigning a new channel.
-        vault.write(channel.id, data.webhook_url.get_secret_value())
+        if settings.webhook_encryption_key:
+            channel.webhook_ciphertext = EncryptedVault(settings.webhook_encryption_key).encrypt(
+                channel.id, data.webhook_url.get_secret_value()
+            )
+        else:
+            vault.write(channel.id, data.webhook_url.get_secret_value())
         return channel
 
     async def get_channel(session, key):

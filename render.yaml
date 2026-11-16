@@ -1,0 +1,30 @@
+# Hobby/demo: Free sleeps when idle. No keepalive jobs, paid worker, disk or Render DB.
+services:
+  - type: web
+    name: api-sentinel
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: python -m api_sentinel.hosted
+    healthCheckPath: /health/ready
+    numInstances: 1
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SENTINEL_API_KEY
+        generateValue: true
+      - key: WEBHOOK_ENCRYPTION_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://rabuuwu.github.io
+      - key: CHECK_CONCURRENCY
+        value: '2'
+      - key: MAX_MONITORS
+        value: '10'
+      - key: RETENTION_DAYS
+        value: '7'
+      - key: WORKER_LOCK_WAIT_SECONDS
+        value: '120'

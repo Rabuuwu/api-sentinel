@@ -61,3 +61,7 @@ Kanały Discord przyjmują tylko kanoniczne HTTPS discord.com/api/webhooks/… b
 Pusta lista kanałów monitora zachowuje dotychczasowy fallback env Discord/console. Jawne przypisanie usuniętego lub wyłączonego kanału nie przekieruje alertu do fallbacku. Test notification zapisuje outbox, wymaga działającego sendera i ma limit raz/min/kanał.
 
 Publiczna strona statusowa jest dostępna bez klucza dopiero po ustawieniu published; nadal tylko przez interfejs sieciowy hosta. Nie wpisuj sekretów ani wewnętrznych adresów w publiczne nazwy/opisy. Jej API nie zwraca URL monitorów, powodów awarii, nagłówków ani konfiguracji.
+
+## Wariant Render/Neon
+
+Instrukcja RENDER_NEON.md jest obowiązująca dla opcjonalnego hostingu. Przy WEBHOOK_ENCRYPTION_KEY nowe sekrety są szyfrowane w bazie, zamiast zapisywane do plików. Render wymaga tego klucza. Lokalny tryb bez klucza nadal używa prywatnego katalogu. Nie rotuj klucza bez ponownego zaszyfrowania istniejących kanałów. Baza Neon musi być osobna od DnDCompanion i używać bezpośredniego endpointu z weryfikowanym TLS.

@@ -31,3 +31,29 @@ class SecretVault:
 
     def read(self, key: UUID) -> str:
         return validate_webhook((self.directory / str(key)).read_text())
+
+
+class EncryptedVault:
+    """Fernet authenticated ciphertext, bound to a channel ID; key stays outside the DB."""
+
+    def __init__(self, hex_key: str):
+        import base64
+        from importlib import import_module
+
+        # Deferred import preserves local file-vault use before installing hosted dependencies.
+        self.cipher = import_module("cryptography.fernet").Fernet(
+            base64.urlsafe_b64encode(bytes.fromhex(hex_key))
+        )
+
+    def encrypt(self, channel_id: UUID, value: str) -> str:
+        payload = f"{channel_id}\n{validate_webhook(value)}".encode()
+        return self.cipher.encrypt(payload).decode()
+
+    def decrypt(self, channel_id: UUID, value: str) -> str:
+        try:
+            identifier, webhook = self.cipher.decrypt(value.encode()).decode().split("\n", 1)
+            if identifier != str(channel_id):
+                raise ValueError
+            return validate_webhook(webhook)
+        except Exception:
+            raise ValueError("Webhook secret cannot be decrypted") from None
