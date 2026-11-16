@@ -1,10 +1,10 @@
 import os
 import re
 from dataclasses import dataclass, field
-from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
+from api_sentinel.config_errors import ConfigurationError, config_url, env_integer
 from api_sentinel.database_url import connection_options
 
 
@@ -29,19 +29,21 @@ class Settings:
         if self.webhook_encryption_key and not re.fullmatch(
             r"[0-9a-fA-F]{64}", self.webhook_encryption_key
         ):
-            raise ValueError("WEBHOOK_ENCRYPTION_KEY must be 64 hexadecimal characters")
+            raise ConfigurationError("WEBHOOK_ENCRYPTION_KEY must be 64 hexadecimal characters")
         if self.hosted and not self.webhook_encryption_key:
-            raise ValueError("Hosted mode requires WEBHOOK_ENCRYPTION_KEY")
+            raise ConfigurationError("Hosted mode requires WEBHOOK_ENCRYPTION_KEY")
         if not 0 <= self.worker_lock_wait_seconds <= 300:
-            raise ValueError("Invalid worker lock wait")
+            raise ConfigurationError("WORKER_LOCK_WAIT_SECONDS must be between 0 and 300")
         if len(self.api_key) < 32 or self.api_key.startswith("replace-with"):
-            raise ValueError("SENTINEL_API_KEY must contain at least 32 random characters")
+            raise ConfigurationError("SENTINEL_API_KEY must contain at least 32 random characters")
         if not 1 <= self.check_concurrency <= 100:
-            raise ValueError("CHECK_CONCURRENCY must be between 1 and 100")
+            raise ConfigurationError("CHECK_CONCURRENCY must be between 1 and 100")
         if not 1 <= self.max_monitors <= 10000 or not 1 <= self.retention_days <= 365:
-            raise ValueError("Invalid monitor or retention limit")
+            raise ConfigurationError(
+                "MAX_MONITORS must be 1..10000 and RETENTION_DAYS must be 1..365"
+            )
         for origin in self.cors_origins:
-            parsed = urlsplit(origin)
+            parsed = config_url(origin, "CORS_ORIGINS")
             if (
                 parsed.scheme != "https"
                 or not parsed.hostname
@@ -52,9 +54,11 @@ class Settings:
                 or parsed.fragment
                 or "*" in origin
             ):
-                raise ValueError("CORS_ORIGINS must contain exact HTTPS origins without paths")
+                raise ConfigurationError(
+                    "CORS_ORIGINS must contain exact HTTPS origins without paths"
+                )
         if self.discord_webhook_url:
-            url = urlsplit(self.discord_webhook_url)
+            url = config_url(self.discord_webhook_url, "DISCORD_WEBHOOK_URL")
             if (
                 url.scheme != "https"
                 or url.hostname != "discord.com"
@@ -62,7 +66,7 @@ class Settings:
                 or url.username
                 or url.port not in (None, 443)
             ):
-                raise ValueError("DISCORD_WEBHOOK_URL must be a Discord HTTPS webhook")
+                raise ConfigurationError("DISCORD_WEBHOOK_URL must be a Discord HTTPS webhook")
 
     @classmethod
     def from_env(cls):
@@ -78,16 +82,16 @@ class Settings:
             or os.environ.get("DATABASE_URL_UNPOOLED")
             or os.environ.get("DATABASE_URL", ""),
             api_key=os.environ.get("SENTINEL_API_KEY", ""),
-            check_concurrency=int(os.getenv("CHECK_CONCURRENCY", "10")),
-            max_monitors=int(os.getenv("MAX_MONITORS", "100")),
-            retention_days=int(os.getenv("RETENTION_DAYS", "30")),
+            check_concurrency=env_integer("CHECK_CONCURRENCY", "10"),
+            max_monitors=env_integer("MAX_MONITORS", "100"),
+            retention_days=env_integer("RETENTION_DAYS", "30"),
             discord_webhook_url=os.getenv("DISCORD_WEBHOOK_URL", ""),
             allowed_hosts=tuple(host.strip() for host in hosts if host.strip()),
             secrets_dir=os.getenv("SECRETS_DIR", ".local/secrets"),
             frontend_dir=os.getenv("FRONTEND_DIR", "frontend/dist"),
             hosted=os.getenv("RENDER", "").lower() == "true",
             webhook_encryption_key=os.getenv("WEBHOOK_ENCRYPTION_KEY", ""),
-            worker_lock_wait_seconds=int(os.getenv("WORKER_LOCK_WAIT_SECONDS", "0")),
+            worker_lock_wait_seconds=env_integer("WORKER_LOCK_WAIT_SECONDS", "0"),
             cors_origins=tuple(
                 origin.strip()
                 for origin in os.getenv("CORS_ORIGINS", "").split(",")

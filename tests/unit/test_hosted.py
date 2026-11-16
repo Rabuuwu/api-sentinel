@@ -160,3 +160,39 @@ def test_neon_channel_binding_is_preserved():
 def test_neon_pooler_rejected_even_outside_render():
     with pytest.raises(ValueError, match="direct Neon"):
         connection_options("postgresql://user:pass@ep-example-pooler.neon.tech/db")
+
+
+@pytest.mark.parametrize("safe", [True, False])
+def test_startup_reports_only_safe_configuration_errors(monkeypatch, caplog, safe):
+    from api_sentinel import hosted
+    from api_sentinel.config_errors import ConfigurationError
+
+    async def fail():
+        if safe:
+            raise ConfigurationError("WEBHOOK_ENCRYPTION_KEY must be 64 hexadecimal characters")
+        raise ValueError("postgresql://user:secret-password@host/db")
+
+    monkeypatch.setattr(hosted, "run", fail)
+    with pytest.raises(SystemExit) as result:
+        hosted.main()
+    assert result.value.code == 1
+    assert "secret-password" not in caplog.text
+    assert ("WEBHOOK_ENCRYPTION_KEY" in caplog.text) == safe
+
+
+def test_invalid_numeric_config_never_logs_value(monkeypatch):
+    from api_sentinel.config_errors import ConfigurationError, env_integer
+
+    monkeypatch.setenv("PORT", "accidental-secret")
+    with pytest.raises(ConfigurationError, match="PORT must be an integer") as result:
+        env_integer("PORT", "8000")
+    assert "accidental-secret" not in str(result.value)
+
+
+def test_invalid_db_port_never_logs_value():
+    from api_sentinel.config_errors import ConfigurationError
+
+    with pytest.raises(ConfigurationError, match="invalid URL or port") as result:
+        connection_options("postgresql://user:password@host:accidental-secret/db")
+    assert "accidental-secret" not in str(result.value)
+    assert "password" not in str(result.value)

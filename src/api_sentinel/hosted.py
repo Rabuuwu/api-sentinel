@@ -2,11 +2,11 @@
 
 import asyncio
 import logging
-import os
 import signal
 import sys
 
 from api_sentinel.config import Settings
+from api_sentinel.config_errors import ConfigurationError, env_integer
 from api_sentinel.vault import EncryptedVault
 
 logger = logging.getLogger("sentinel")
@@ -61,9 +61,9 @@ async def run():
     settings = Settings.from_env()
     if settings.webhook_encryption_key:
         EncryptedVault(settings.webhook_encryption_key)  # Fail before migration if unavailable.
-    port = int(os.getenv("PORT", "8000"))
+    port = env_integer("PORT", "8000")
     if not 1 <= port <= 65535:
-        raise ValueError("Invalid PORT")
+        raise ConfigurationError("PORT must be between 1 and 65535")
     stop = asyncio.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         asyncio.get_running_loop().add_signal_handler(sig, stop.set)
@@ -109,6 +109,9 @@ def main():
     logging.basicConfig(level=logging.INFO)
     try:
         code = asyncio.run(run())
+    except ConfigurationError as error:
+        logger.error("Hosted configuration invalid: %s", error)
+        code = 1
     except Exception as error:
         # Config/DB/secret exceptions must not reveal credentials in provider logs.
         logger.error("Hosted startup failed (%s)", type(error).__name__)
