@@ -1,0 +1,67 @@
+x-app: &app
+  build: .
+  environment: &environment
+    DATABASE_URL: postgresql+asyncpg://sentinel:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/sentinel
+    SENTINEL_API_KEY: ${SENTINEL_API_KEY:?Set SENTINEL_API_KEY}
+    CHECK_CONCURRENCY: ${CHECK_CONCURRENCY:-10}
+    MAX_MONITORS: ${MAX_MONITORS:-100}
+    RETENTION_DAYS: ${RETENTION_DAYS:-30}
+    DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+    ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,[::1]}
+    SECRETS_DIR: /secrets
+  volumes:
+    - webhook-secrets:/secrets
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: sentinel
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U sentinel -d sentinel"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+  migrate:
+    <<: *app
+    command: [alembic, upgrade, head]
+    depends_on:
+      postgres:
+        condition: service_healthy
+  api:
+    <<: *app
+    expose: ["8000"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5)"]
+      interval: 10s
+      retries: 5
+    restart: unless-stopped
+  worker:
+    <<: *app
+    command: [python, -m, api_sentinel.worker]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    environment:
+      API_UPSTREAM: http://api:8000
+      NGINX_ENVSUBST_FILTER: API_UPSTREAM
+    ports:
+      - "${FRONTEND_BIND:-127.0.0.1}:${FRONTEND_PORT:-8000}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  postgres-data:
+  webhook-secrets:

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light"><title>API Sentinel — monitoring</title>
+  <link rel="stylesheet" href="/static/style.css"><script src="/static/app.js" defer></script>
+</head>
+<body>
+  <aside class="rail">
+    <a class="brand" href="/" aria-label="API Sentinel, strona główna"><span class="brand-mark">S</span> API Sentinel</a>
+    <p>Twoje centrum monitoringu</p>
+    <nav aria-label="Nawigacja"><a href="#monitors" class="active">Monitory</a><a href="#system">Stan systemu</a></nav>
+    <div class="hosting"><span class="dot"></span> Na Twojej maszynie<small>Dane i panel pozostają lokalnie.</small></div>
+  </aside>
+  <main>
+    <header><div><p class="context">Dostępność usług</p><h1>Wszystko pod obserwacją.</h1></div><button id="logout" class="quiet" hidden>Zablokuj panel</button></header>
+    <section id="login" class="login">
+      <h2>Otwórz swój panel</h2><p>Wpisz klucz administratora z lokalnego pliku <code>.env</code>.</p>
+      <form id="login-form"><label for="api-key">Klucz API</label><div class="inline"><input id="api-key" type="password" required autocomplete="off" placeholder="SENTINEL_API_KEY"><button>Połącz</button></div></form>
+      <p class="hint">Klucz jest przechowywany tylko w pamięci tej karty. Odświeżenie strony zablokuje panel.</p>
+    </section>
+    <p id="notice" role="status" aria-live="polite" hidden></p>
+    <div id="workspace" hidden>
+      <section id="system" class="system-strip" aria-label="Stan systemu"><span id="worker-status">Sprawdzanie workera…</span><span id="alert-status"></span><span id="updated"></span></section>
+      <section id="monitors">
+        <div class="section-head"><div><h2>Monitory <span id="monitor-count"></span></h2><p>Ostatni znany stan Twoich usług.</p></div><div class="actions"><button id="refresh" class="secondary">Odśwież</button><button id="add">Dodaj monitor</button></div></div>
+        <div id="empty" class="empty" hidden><div class="signal-art" aria-hidden="true">··· ━ ···</div><h3>Pierwszy adres, pierwszy pomiar.</h3><p>Dodaj publiczny adres strony lub endpoint API.<br>Sentinel sprawdzi go i rozpocznie historię dostępności.</p><button id="add-empty">Dodaj pierwszy monitor</button></div>
+        <div id="monitor-table" class="table-wrap"><table><thead><tr><th>Usługa</th><th>Stan</th><th>Ostatni pomiar</th><th>Interwał</th><th><span class="sr-only">Akcje</span></th></tr></thead><tbody id="monitor-rows"></tbody></table></div>
+        <button id="load-monitors" class="secondary" hidden>Pokaż kolejne monitory</button>
+      </section>
+      <section id="details" hidden aria-labelledby="detail-name">
+        <div class="section-head"><div><p class="context">Historia monitora</p><h2 id="detail-name"></h2></div><label>Okres <select id="window"><option value="24h">24 godziny</option><option value="7d">7 dni</option><option value="30d">30 dni</option></select></label></div>
+        <div class="metrics"><div><span>Udane próby</span><strong id="success-rate">—</strong></div><div><span>Mediana odpowiedzi</span><strong id="latency">—</strong></div><div><span>Ukończone pomiary</span><strong id="completed">—</strong></div><div><span>Otwarte incydenty</span><strong id="open-incidents">—</strong></div></div>
+        <p class="hint">Udział udanych prób nie oznacza ciągłej dostępności między pomiarami. Brak danych to nie 100% uptime.</p>
+        <h3>Ostatnie pomiary</h3><div class="table-wrap"><table><thead><tr><th>Czas</th><th>Wynik</th><th>HTTP</th><th>Odpowiedź</th></tr></thead><tbody id="check-rows"></tbody></table></div><button id="more-checks" class="secondary" hidden>Starsze pomiary</button>
+        <h3>Incydenty</h3><div id="incident-list"></div><button id="more-incidents" class="secondary" hidden>Starsze incydenty</button>
+      </section>
+      <footer>Pomiary wykonuje lokalny worker. Gdy komputer jest wyłączony lub uśpiony, monitoring nie działa.</footer>
+    </div>
+  </main>
+  <dialog id="editor"><form id="monitor-form">
+    <div class="section-head"><h2 id="editor-title">Nowy monitor</h2><button type="button" id="close-editor" class="quiet" aria-label="Zamknij">✕</button></div>
+    <label>Nazwa<input name="name" required maxlength="120" placeholder="Np. DnD Companion API"></label>
+    <label>Publiczny adres URL<input name="url" type="url" required maxlength="2048" placeholder="https://twoja-usluga.pl/health"></label>
+    <p class="hint">HTTP/HTTPS, port 80 lub 443. Bez parametrów query i danych logowania. Adresy prywatne są blokowane.</p>
+    <div class="form-grid">
+      <label>Metoda<select name="method"><option>GET</option><option>HEAD</option></select></label>
+      <label>Interwał (s)<input name="interval_seconds" type="number" value="300" min="60" max="86400" required></label>
+      <label>Timeout (s)<input name="timeout_seconds" type="number" value="20" min="2" max="30" required></label>
+      <label>Próg awarii<input name="failure_threshold" type="number" value="3" min="1" max="100" required></label>
+      <label>Próg poprawy<input name="recovery_threshold" type="number" value="2" min="1" max="100" required></label>
+      <label>HTTP od<input name="expected_status_min" type="number" value="200" min="100" max="599" required></label>
+      <label>HTTP do<input name="expected_status_max" type="number" value="299" min="100" max="599" required></label>
+    </div>
+    <p id="form-error" role="alert" hidden></p><button id="save">Zapisz monitor</button>
+  </form></dialog>
+</body></html>
