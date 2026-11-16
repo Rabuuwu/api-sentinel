@@ -14,7 +14,7 @@ Adres wpiszesz bezpośrednio w panelu Render jako sekret `DATABASE_URL`, nie do 
 postgresql://USER:PASSWORD@DIRECT_NEON_HOST/sentinel?sslmode=require
 ```
 
-Jeśli Neon dodał `&channel_binding=require`, usuń tylko ten parametr z kopii dla tej aplikacji. Sterownik asyncpg nie przyjmuje tej opcji libpq. Aplikacja wymusza weryfikację certyfikatu TLS i nazwy hosta — nie wyłączaj SSL. Zachowaj kodowanie znaków hasła w URL.
+Zachowaj `channel_binding=require` i kodowanie hasła w URL. Aplikacja używa wtedy asynchronicznego psycopg 3 z weryfikacją certyfikatu i nazwy hosta (`verify-full`, systemowy magazyn CA). Dotychczasowe połączenia bez wymaganego channel binding nadal używają asyncpg. `DATABASE_URL_UNPOOLED`, jeśli ustawione, ma pierwszeństwo przed `DATABASE_URL` dla API, migracji i workera.
 
 ## 2. Przygotuj klucz szyfrowania webhooków
 
@@ -91,3 +91,37 @@ Po pobraniu tej wersji dla lokalnego startu zainstaluj zależności (`.venv/bin/
 Przed pierwszym użyciem wymagane są udany build Rendera, migracja na nowej bazie i realny pomiar. Nie wykonano tych operacji z tej sesji. Testy szyfrowania wymagają nowej zależności `cryptography`; brak instalacji oznacza jawny skip, nie wynik pozytywny.
 
 [Render Free](https://render.com/docs/free), [Blueprint](https://render.com/docs/blueprint-spec), [Neon — połączenia](https://neon.com/docs/connect/connect-from-any-app), [Neon — pooling](https://neon.com/docs/connect/connection-pooling), [Fernet](https://cryptography.io/en/stable/fernet/).
+
+
+## Konfiguracja przez Neon CLI
+
+`neon init` / `neon deploy` zapisuje sekrety wyłącznie do ignorowanego `.env` (lub `.env.local`).
+Konfiguracja projektu jest w `neon.ts`; `.neon` nie trafia do Git.
+Wybrany projekt: `quiet-sea-10461963`, branch `production`, tylko Postgres.
+Nie potrzeba Neon Auth ani Functions — backend nadal działa w FastAPI.
+
+Po `neon deploy`, z katalogu repozytorium:
+
+```sh
+.venv/bin/python -m pip install -e '.[dev]'
+npm ci --prefix frontend
+npm run build
+npm start
+```
+
+`npm start` uruchamia istniejące migracje Alembic, API i worker z bazą Neon.
+Panel lokalny: http://127.0.0.1:8000, klucz logowania: istniejący `SENTINEL_API_KEY` w `.env`.
+Zatrzymaj poprzednią lokalną instancję, jeśli zajmuje port 8000.
+Nie używaj `scripts/local.py run` dla bazy Neon — ten skrypt wymaga lokalnego klastra.
+Lokalne dane nie są automatycznie kopiowane do Neon.
+
+Weryfikacja odczytu bazy przez aplikację (po uruchomieniu):
+
+```sh
+curl --fail http://127.0.0.1:8000/health/ready
+```
+
+Oczekiwane HTTP 200 potwierdza dostęp do wymaganych tabel. Nie zastępuje testu całego monitoringu.
+Testy z zapisem danych uruchamiaj wyłącznie na osobnej bazie/gałęzi testowej, nigdy `production`.
+Na Render ustaw sekretny bezpośredni URL jako `DATABASE_URL` lub `DATABASE_URL_UNPOOLED`,
+ponieważ lokalne pliki `.env` nie są wysyłane do hostingu.

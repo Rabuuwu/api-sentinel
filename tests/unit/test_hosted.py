@@ -27,7 +27,7 @@ def test_neon_url_uses_asyncpg_and_verified_tls():
         "postgresql://user:pass@ep-example-pooler.aws.neon.tech/db?sslmode=require",
         "postgresql://user:pass@host/db?sslmode=disable",
         "postgresql://user:pass@host/db?ssl=false",
-        "postgresql://user:pass@host/db?channel_binding=require",
+        "postgresql://user:pass@host/db?channel_binding=invalid",
     ],
 )
 def test_hosted_rejects_unsafe_or_incompatible_db_options(url):
@@ -141,3 +141,22 @@ def test_encrypted_secret_roundtrip_tampering_and_channel_binding():
     ).model_dump_json()
     assert value not in output
     assert "ciphertext" not in output
+
+
+def test_neon_channel_binding_is_preserved():
+    from urllib.parse import parse_qs, urlsplit
+
+    url, _ = connection_options(
+        "postgresql://user:p%40ss@ep-example.neon.tech/db?sslmode=require&channel_binding=require"
+    )
+    parsed = urlsplit(url)
+    assert parsed.scheme == "postgresql+psycopg"
+    assert parsed.password == "p%40ss"
+    assert parse_qs(parsed.query) == {
+        "sslmode": ["verify-full"], "sslrootcert": ["system"], "channel_binding": ["require"]
+    }
+
+
+def test_neon_pooler_rejected_even_outside_render():
+    with pytest.raises(ValueError, match="direct Neon"):
+        connection_options("postgresql://user:pass@ep-example-pooler.neon.tech/db")

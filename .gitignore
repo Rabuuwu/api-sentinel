@@ -69,3 +69,4 @@ backups/
 
 # Separate GitHub Pages build; local dashboard remains intact
 frontend/dist-pages/
+.neon

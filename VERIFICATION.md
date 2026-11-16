@@ -1,3 +1,36 @@
+## Neon CLI integration — 2026-11-16
+
+User terminal confirmed authenticated `neon deploy` on `production`:
+`No changes — branch production already matches the policy.`
+`Pulled 5 Neon variables into .env` (Postgres only provisioned).
+This confirms configuration, not application connectivity or migration success.
+
+Changes: root build/start/test scripts; prefer direct Neon URL; preserve required
+SCRAM channel binding with async psycopg/libpq, verified TLS; retain asyncpg for
+existing configurations. Explicit process database settings override dotenv files.
+No new schema migration, no local data import, no Render/Pages publication.
+
+Verified:
+- `npm run build`: exit 0, `✓ built in 3.92s`; dependency `use client` warnings.
+- `./_tools/devhouse test api-sentinel`: 11 frontend tests passed (before root test
+  script was expanded to also include pytest).
+- Final Python suite: 107 passed, 4 skipped.
+- Final focused config/hosted tests: 19 passed, 1 skipped.
+- Ruff: `All checks passed!`; mypy: no issues in 19 source files.
+- `git diff --check`: passed.
+
+Blocked:
+- Agent npm install/init: registry DNS unavailable; user completed CLI setup separately.
+- Python dependency download failed: psycopg and cryptography unavailable in session.
+- `npm start`: exit 1, `ModuleNotFoundError: No module named 'psycopg'`.
+- Neon hostname resolution: `gaierror`. No database connection, migrations or live
+  end-to-end test verified. Production has not been used for test writes.
+- Three PostgreSQL integration tests and crypto test skipped; do not count as passed.
+
+Follow RENDER_NEON.md to install dependencies and start from a network-enabled terminal.
+
+---
+
 # Aktualizacja: GitHub Pages + Render Free + Neon Free (2026-11-16)
 
 - Backend: pełny przebieg przed ostatnim testem integracyjnym **103 passed, 3 skipped**. Dodany następnie test trwałości zaszyfrowanego kanału również został jawnie pominięty bez testowej DB (łącznie obecnie 4 testy wymagają niedostępnych zależności/usług).

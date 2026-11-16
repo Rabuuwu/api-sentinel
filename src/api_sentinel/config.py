@@ -66,13 +66,17 @@ class Settings:
 
     @classmethod
     def from_env(cls):
-        load_dotenv()
+        database_override = os.getenv("DATABASE_URL_UNPOOLED") or os.getenv("DATABASE_URL")
+        load_dotenv(".env.local")
+        load_dotenv(".env")
         hosts = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,[::1]").split(",")
         external_host = os.getenv("RENDER_EXTERNAL_HOSTNAME", "")
         if external_host:
             hosts.append(external_host)
         return cls(
-            database_url=os.environ.get("DATABASE_URL", ""),
+            database_url=database_override
+            or os.environ.get("DATABASE_URL_UNPOOLED")
+            or os.environ.get("DATABASE_URL", ""),
             api_key=os.environ.get("SENTINEL_API_KEY", ""),
             check_concurrency=int(os.getenv("CHECK_CONCURRENCY", "10")),
             max_monitors=int(os.getenv("MAX_MONITORS", "100")),
