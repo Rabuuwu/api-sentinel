@@ -51,7 +51,7 @@ def serialize_summary(row) -> dict:
     return data
 
 
-async def summary(session, start, end, monitor_id=None):
+async def summary(session, start, end, monitor_id=None, owner_id=None):
     query = (
         select(*aggregates())
         .select_from(Execution)
@@ -65,6 +65,8 @@ async def summary(session, start, end, monitor_id=None):
         query = query.where(Execution.monitor_id == monitor_id)
     else:
         query = query.join(Monitor).where(Monitor.deleted_at.is_(None))
+        if owner_id is not None:
+            query = query.where(Monitor.owner_id == owner_id)
     row = (await session.execute(query)).mappings().one()
     return serialize_summary(row)
 

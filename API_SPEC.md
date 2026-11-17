@@ -1,6 +1,6 @@
 # REST API — kontrakt MVP (v1)
 
-Prefix: `/api/v1`; JSON; timestamps UTC ISO 8601; admin auth nagłówek `X-API-Key: <secret>` (wyłącznie za HTTPS poza localhost). Response błędu: `{ "error": { "code": "VALIDATION_ERROR", "message": "...", "request_id": "..." } }`.
+Prefix: `/api/v1`; JSON; timestamps UTC ISO 8601; auth nagłówek `Authorization: Bearer <token>` (wyłącznie za HTTPS poza localhost). Response błędu: `{ "error": { "code": "VALIDATION_ERROR", "message": "...", "request_id": "..." } }`.
 
 ## Monitory
 - `POST /monitors` — utwórz monitor (201).
@@ -102,3 +102,35 @@ Poniższe ścieżki są względne wobec `/api/v1`. Wymagają X-API-Key poza jawn
 Monitor POST/PATCH dodatkowo: description, degraded_latency_ms (nullable wyłącza próg), degraded_threshold, notification_channel_ids. Dotychczasowe pola zachowują domyślne wartości. Kanał POST przyjmuje webhook_url jako sekret zapisu; PATCH nie ujawnia ani nie zmienia webhooka. Strona przyjmuje name, slug, description, published, monitor_ids.
 
 Metryki nie oferują regionów ani niemierzonych etapów DNS/connect/download. `latency_series` deklaruje dostępne serie. Brak historii oznacza wartości null; DEGRADED wlicza się do udanych HTTP. Overview używa paginacji offsetowej, listy kanałów i stron są zwykłymi listami; nie zakładaj dla nich formatu cursor. `/system` dodaje wersję, lokalizację, retencję i limit monitorów.
+
+
+## Konta (migracja 0004)
+
+Nagłówek `X-API-Key` nie uwierzytelnia już żądań. `SENTINEL_API_KEY` jest wyłącznie
+jednorazowym dowodem uprawnień podczas tworzenia pierwszego konta.
+
+| Endpoint `/api/v1/auth` | Kontrakt |
+|---|---|
+| GET `/setup` | Publiczne `{setup_required: boolean}` |
+| POST `/bootstrap` | `{username,password,setup_key}`; 201, jednorazowo przypisuje stare dane właścicielowi |
+| POST `/register` | `{username,password,invitation}`; 201, atomowo zużywa zaproszenie |
+| POST `/login` | `{username,password}`; 200 |
+| GET `/me` | `{id,username,is_admin}`; aktywna sesja |
+| POST `/logout` | Unieważnia bieżącą sesję; 204 |
+| POST `/logout-all` | Unieważnia wszystkie własne sesje; 204 |
+| POST `/password` | `{current_password,new_password}`; zmienia hasło i unieważnia wszystkie sesje; 204 |
+| POST `/invitations` | Tylko administrator; `{invitation,expires_at}`, 201; kod pokazany raz |
+| GET `/users` | Tylko administrator; lista identyfikatorów, loginów i roli (maks. 100) |
+| DELETE `/users/{id}/sessions` | Tylko administrator; unieważnia sesje użytkownika, 204 |
+
+Login/bootstrap/register zwracają `{token,expires_at,user:{id,username,is_admin}}`.
+Login 3–40 znaków ASCII: litery, cyfry, `_`, `.`, `-`, zapisany małymi literami.
+Hasło 15–128 znaków, bez przycinania/normalizacji. Pola hasła są write-only.
+Hasło, jego hash, tokeny innych sesji i hash zaproszenia nigdy nie trafiają do odpowiedzi.
+
+Zasoby chronione są filtrowane po właścicielu wynikającym z sesji; `owner_id` nie jest
+akceptowany w wejściu. Próba dostępu do cudzego ID zwraca 404, przypisania cudzego
+monitora/kanału — 422. Administrator także widzi tylko własne zasoby monitoringu.
+Publiczne strony statusowe zachowują dotychczasowy, ograniczony kontrakt.
+Błędy logowania są ogólne (401), limit prób zwraca 429. Sesja trwa maksymalnie 8 godzin,
+wygasa po 30 minutach bez żądań. Tokeny nie są przyjmowane w query string ani cookies.

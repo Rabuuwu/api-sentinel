@@ -62,7 +62,7 @@ W repo API Sentinel:
 4. **Settings → Pages → Source: GitHub Actions**.
 5. **Actions → Deploy dashboard to GitHub Pages → Run workflow**.
 
-Otwórz URL zwrócony przez workflow, docelowo `https://rabuuwu.github.io/api-sentinel/`. Zaloguj się `SENTINEL_API_KEY` z Rendera. Klucz nie jest zapisywany w buildzie ani localStorage. Pierwsze połączenie z uśpionym serwerem może potrwać około minuty; formularz czeka do dwóch minut.
+Otwórz URL zwrócony przez workflow, docelowo `https://rabuuwu.github.io/api-sentinel/`. Utwórz konto właściciela, jednorazowo podając `SENTINEL_API_KEY` z Rendera. Potem loguj się loginem i hasłem. Klucz nie jest zapisywany w buildzie ani localStorage. Pierwsze połączenie z uśpionym serwerem może potrwać około minuty; formularz czeka do dwóch minut.
 
 GitHub Free udostępnia Pages dla publicznych repozytoriów; Pages dla prywatnego repo wymaga odpowiedniego planu. Jeżeli w Settings → Pages widzisz blokadę planu, nie uda się wdrożyć z tego prywatnego repo w GitHub Free. Możesz świadomie upublicznić repo po przeglądzie albo użyć oddzielnego publicznego repo z samym frontendem. **Nie zmieniono widoczności ani portfolio automatycznie.**
 
@@ -110,7 +110,7 @@ npm start
 ```
 
 `npm start` uruchamia istniejące migracje Alembic, API i worker z bazą Neon.
-Panel lokalny: http://127.0.0.1:8000, klucz logowania: istniejący `SENTINEL_API_KEY` w `.env`.
+Panel lokalny: http://127.0.0.1:8000, pierwsze konto utworzysz z kluczem instalacji `SENTINEL_API_KEY` w `.env`.
 Zatrzymaj poprzednią lokalną instancję, jeśli zajmuje port 8000.
 Nie używaj `scripts/local.py run` dla bazy Neon — ten skrypt wymaga lokalnego klastra.
 Lokalne dane nie są automatycznie kopiowane do Neon.
@@ -125,3 +125,7 @@ Oczekiwane HTTP 200 potwierdza dostęp do wymaganych tabel. Nie zastępuje testu
 Testy z zapisem danych uruchamiaj wyłącznie na osobnej bazie/gałęzi testowej, nigdy `production`.
 Na Render ustaw sekretny bezpośredni URL jako `DATABASE_URL` lub `DATABASE_URL_UNPOOLED`,
 ponieważ lokalne pliki `.env` nie są wysyłane do hostingu.
+
+## Aktualizacja do kont użytkowników
+
+Przed wdrożeniem migracji `0004` wykonaj backup bazy i przeczytaj [ACCOUNTS.md](ACCOUNTS.md). Wdróż backend i nowy frontend razem. Stary formularz API-key nie działa z nowym backendem.

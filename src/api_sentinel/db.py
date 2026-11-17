@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from api_sentinel import auth_models  # noqa: F401
 from api_sentinel.config import Settings
 from api_sentinel.database_url import connection_options
 

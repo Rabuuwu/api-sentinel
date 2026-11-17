@@ -1,7 +1,7 @@
 import { describe,it,expect,vi } from 'vitest';
 import { render,screen } from '@testing-library/react';
 import { delta } from '@/lib/utils';
-import { api,setApiKey } from '@/lib/api';
+import { api,setSessionToken } from '@/lib/api';
 import { Empty,Metric,StatusBadge } from '@/components/common';
 import { defaults,validateMonitor } from '@/components/monitor-editor';
 
@@ -27,8 +27,8 @@ describe('monitor form validation',()=>{
 describe('API client',()=>{
  it('does not attach an administrator key to public requests',async()=>{
   const fetchMock=vi.spyOn(globalThis,'fetch').mockResolvedValue(new Response(JSON.stringify({name:'Public'}),{status:200}));
-  setApiKey('private-key');await api('/public/status-pages/test',{},true);
-  expect(new Headers(fetchMock.mock.calls[0][1]?.headers).has('X-API-Key')).toBe(false);fetchMock.mockRestore();setApiKey('');
+  setSessionToken('private-key');await api('/public/status-pages/test',{},true);
+  expect(new Headers(fetchMock.mock.calls[0][1]?.headers).has('Authorization')).toBe(false);fetchMock.mockRestore();setSessionToken('');
  });
  it('surfaces server errors, never converts them to empty data',async()=>{
   const fetchMock=vi.spyOn(globalThis,'fetch').mockResolvedValue(new Response(JSON.stringify({error:{message:'Database unavailable'}}),{status:503}));

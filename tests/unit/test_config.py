@@ -40,3 +40,15 @@ def test_explicit_test_database_overrides_dotenv_neon(monkeypatch, tmp_path):
     (tmp_path / ".env").write_text("DATABASE_URL_UNPOOLED=postgresql://host/production\n")
     assert Settings.from_env().database_url == "postgresql://localhost/sentinel_test"
     monkeypatch.delenv("DATABASE_URL_UNPOOLED", raising=False)
+
+
+def test_dotenv_reads_do_not_poison_subsequent_test_settings(monkeypatch, tmp_path):
+    import os
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DATABASE_URL_UNPOOLED", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://localhost/sentinel_test")
+    monkeypatch.setenv("SENTINEL_API_KEY", "x" * 40)
+    (tmp_path / ".env").write_text("DATABASE_URL_UNPOOLED=postgresql://host/production\n")
+    for _ in range(2):
+        assert Settings.from_env().database_url == "postgresql://localhost/sentinel_test"
+    assert "DATABASE_URL_UNPOOLED" not in os.environ

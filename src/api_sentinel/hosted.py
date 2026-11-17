@@ -5,7 +5,7 @@ import logging
 import signal
 import sys
 
-from api_sentinel.config import Settings
+from api_sentinel.config import Settings, environment_values
 from api_sentinel.config_errors import ConfigurationError, env_integer
 from api_sentinel.vault import EncryptedVault
 
@@ -61,7 +61,7 @@ async def run():
     settings = Settings.from_env()
     if settings.webhook_encryption_key:
         EncryptedVault(settings.webhook_encryption_key)  # Fail before migration if unavailable.
-    port = env_integer("PORT", "8000")
+    port = env_integer("PORT", "8000", environment_values())
     if not 1 <= port <= 65535:
         raise ConfigurationError("PORT must be between 1 and 65535")
     stop = asyncio.Event()

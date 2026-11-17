@@ -7,6 +7,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from account_helpers import create_identity, remove_identity
 
 pytest.importorskip("sqlalchemy")
 pytest.importorskip("asyncpg")
@@ -44,13 +45,14 @@ def test_database_api_worker_lifecycle():
     async def run():
         app = create_app(config)
         db: Database = app.state.db
+        user_id, token = await create_identity(db)
         monitor_id = None
         try:
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=app), base_url="http://localhost"
             ) as client:
                 assert (await client.get("/api/v1/monitors")).status_code == 401
-                client.headers["X-API-Key"] = config.api_key
+                client.headers["Authorization"] = "Bearer " + token
                 invalid = await client.post(
                     "/api/v1/monitors", json={"name": "private", "url": "http://127.0.0.1"}
                 )
@@ -130,7 +132,7 @@ def test_database_api_worker_lifecycle():
                     )
                 ).json()
                 assert not ({r["id"] for r in first["items"]} & {r["id"] for r in second["items"]})
-                # Transient Discord failure leaves both logical events retryable.
+                # Console fallback is private to server logs, never another tenant's webhook.
                 await send_pending(db, config, httpx.MockTransport(lambda r: httpx.Response(503)))
                 async with db.sessions() as session:
                     alerts = (
@@ -139,7 +141,7 @@ def test_database_api_worker_lifecycle():
                         )
                     ).all()
                     assert len(alerts) == 2
-                    assert all(a.delivery_state == "PENDING" and a.attempts == 1 for a in alerts)
+                    assert all(a.delivery_state == "SENT" and a.attempts == 1 for a in alerts)
                 # Editing invalidates an in-flight check without losing its history.
                 work = await reserve(db, 100)
                 stale_id = next(key for key, data in work if data.name == "integration")
@@ -175,6 +177,7 @@ def test_database_api_worker_lifecycle():
                     await session.execute(
                         text("DELETE FROM monitors WHERE id=CAST(:id AS uuid)"), {"id": monitor_id}
                     )
+            await remove_identity(db, user_id)
             await db.close()
 
     asyncio.run(run())

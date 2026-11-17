@@ -1,3 +1,5 @@
+> Logowanie korzysta teraz z kont użytkowników. Przejście ze starego API key opisuje [ACCOUNTS.md](ACCOUNTS.md).
+
 # Dashboard na GitHub Pages
 
 Frontend React może działać na Pages, niezależnie od miejsca uruchomienia FastAPI. GitHub Pages nie uruchamia Pythona, schedulera ani PostgreSQL. Monitoring wymaga działającego backendu i workera.

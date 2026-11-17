@@ -57,3 +57,18 @@ Migracja zachowuje dotychczasowe pomiary. Backfill timeline tworzy jedynie MONIT
 ## Migracja 0003 — trwałe szyfrowane webhooki
 
 `notification_channels.webhook_ciphertext VARCHAR(4096) NULL` przechowuje ciphertext Fernet powiązany z UUID kanału. Klucz nie jest w bazie. Wartość nigdy nie jest polem ChannelOut ani publicznego API. NULL zachowuje zgodność z lokalnym magazynem plikowym; migracja nie odczytuje ani nie przenosi plików. Downgrade usuwa ciphertext, dlatego wymaga wcześniejszego odtworzenia kanałów lub backupu.
+
+
+## Migracja 0004 — konta
+
+- `users`: UUID, unikalny kanoniczny username, password_hash (Argon2id PHC), is_admin, created_at.
+- `auth_sessions`: SHA-256 losowego 256-bitowego tokenu jako PK, user_id FK, expires_at, last_seen.
+- `account_invitations`: SHA-256 jednorazowego kodu jako PK, created_by FK, expires_at.
+- `auth_budgets`: hashowany klucz budżetu, count, expires_at; licznik prób także po nieudanym logowaniu.
+- `monitors`, `notification_channels`, `status_pages`: indeksowane `owner_id` FK do users.
+
+Nullable owner_id zachowuje stare dane do czasu atomowego bootstrapu. Nowe wpisy API
+zawsze mają właściciela z sesji. Checks, timeline i incydenty dziedziczą właściciela przez monitor_id;
+alerty przez incydent lub kanał. Query scope kontroluje backend (nie RLS); worker ma dostęp do
+wszystkich tenantów. Zachowano sesyjną blokadę singleton workera.
+Downgrade 0004 jest celowo zablokowany, aby nie usuwać kont i izolacji danych przypadkiem.

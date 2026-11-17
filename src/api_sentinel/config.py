@@ -1,11 +1,29 @@
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 from api_sentinel.config_errors import ConfigurationError, config_url, env_integer
 from api_sentinel.database_url import connection_options
+
+
+def environment_values() -> dict[str, str]:
+    # Never mutate os.environ: subsequent Settings reads and child processes must
+    # not inherit a lower-priority production URL over an explicit test URL.
+    layers: list[Mapping[str, str | None]] = [
+        dotenv_values(".env"),
+        dotenv_values(".env.local"),
+        dict(os.environ),
+    ]
+    values = {k: v for layer in layers for k, v in layer.items() if v is not None}
+    for layer in reversed(layers):
+        database = layer.get("DATABASE_URL_UNPOOLED") or layer.get("DATABASE_URL")
+        if database:
+            values["SENTINEL_RESOLVED_DATABASE_URL"] = database
+            break
+    return values
 
 
 @dataclass(frozen=True)
@@ -70,31 +88,27 @@ class Settings:
 
     @classmethod
     def from_env(cls):
-        database_override = os.getenv("DATABASE_URL_UNPOOLED") or os.getenv("DATABASE_URL")
-        load_dotenv(".env.local")
-        load_dotenv(".env")
-        hosts = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,[::1]").split(",")
-        external_host = os.getenv("RENDER_EXTERNAL_HOSTNAME", "")
+        values = environment_values()
+        hosts = values.get("ALLOWED_HOSTS", "localhost,127.0.0.1,[::1]").split(",")
+        external_host = values.get("RENDER_EXTERNAL_HOSTNAME", "")
         if external_host:
             hosts.append(external_host)
         return cls(
-            database_url=database_override
-            or os.environ.get("DATABASE_URL_UNPOOLED")
-            or os.environ.get("DATABASE_URL", ""),
-            api_key=os.environ.get("SENTINEL_API_KEY", ""),
-            check_concurrency=env_integer("CHECK_CONCURRENCY", "10"),
-            max_monitors=env_integer("MAX_MONITORS", "100"),
-            retention_days=env_integer("RETENTION_DAYS", "30"),
-            discord_webhook_url=os.getenv("DISCORD_WEBHOOK_URL", ""),
+            database_url=values.get("SENTINEL_RESOLVED_DATABASE_URL", ""),
+            api_key=values.get("SENTINEL_API_KEY", ""),
+            check_concurrency=env_integer("CHECK_CONCURRENCY", "10", values),
+            max_monitors=env_integer("MAX_MONITORS", "100", values),
+            retention_days=env_integer("RETENTION_DAYS", "30", values),
+            discord_webhook_url=values.get("DISCORD_WEBHOOK_URL", ""),
             allowed_hosts=tuple(host.strip() for host in hosts if host.strip()),
-            secrets_dir=os.getenv("SECRETS_DIR", ".local/secrets"),
-            frontend_dir=os.getenv("FRONTEND_DIR", "frontend/dist"),
-            hosted=os.getenv("RENDER", "").lower() == "true",
-            webhook_encryption_key=os.getenv("WEBHOOK_ENCRYPTION_KEY", ""),
-            worker_lock_wait_seconds=env_integer("WORKER_LOCK_WAIT_SECONDS", "0"),
+            secrets_dir=values.get("SECRETS_DIR", ".local/secrets"),
+            frontend_dir=values.get("FRONTEND_DIR", "frontend/dist"),
+            hosted=values.get("RENDER", "").lower() == "true",
+            webhook_encryption_key=values.get("WEBHOOK_ENCRYPTION_KEY", ""),
+            worker_lock_wait_seconds=env_integer("WORKER_LOCK_WAIT_SECONDS", "0", values),
             cors_origins=tuple(
                 origin.strip()
-                for origin in os.getenv("CORS_ORIGINS", "").split(",")
+                for origin in values.get("CORS_ORIGINS", "").split(",")
                 if origin.strip()
             ),
         )

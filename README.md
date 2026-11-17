@@ -17,7 +17,7 @@ Monitoring HTTP/HTTPS z panelem WWW. Domyślny wariant lokalny uruchamia Postgre
 | Panel WWW: monitory, statystyki, incydenty, stan workera | Implemented — test przeglądarkowy zablokowany |
 | Skrypt lokalnego uruchamiania i opcjonalny Docker Compose | Implemented — uruchomienie czeka na weryfikację |
 | Prawdziwe monitory DnD Companion | Planned — wymagają rzeczywistych adresów |
-| TLS expiry, maintenance windows, sleep-aware, multi-user | Planned — poza bieżącym MVP |
+| TLS expiry, maintenance windows, sleep-aware, multi-user | Implemented — poza bieżącym MVP |
 
 ## Uruchamianie na Twojej maszynie
 
@@ -32,7 +32,7 @@ python3 scripts/local.py run
 
 `setup` instaluje zależności Pythona w `.venv`, zależności Reacta w `frontend/node_modules`, buduje frontend, tworzy `.env` z losowym hasłem i kluczem (uprawnienia `600`), inicjalizuje osobny klaster `.local/postgres`, tworzy bazę `sentinel` i uruchamia migracje. Nie nadpisuje istniejącego `.env`. Nie zmienia systemowego klastra PostgreSQL. Skrypt odrzuci adres bazy inny niż `sentinel@127.0.0.1:54329/sentinel`.
 
-`run` uruchamia ten klaster, migracje, API i worker. Panel: **http://127.0.0.1:8000**. Do logowania użyj `SENTINEL_API_KEY` z własnego `.env`. Klucz pozostaje w pamięci karty przeglądarki; nie zapisujemy go w cookies, localStorage ani sessionStorage. `Ctrl+C` zatrzymuje procesy i klaster uruchomione przez ten skrypt; dane pozostają na dysku.
+`run` uruchamia ten klaster, migracje, API i worker. Panel: **http://127.0.0.1:8000**. Przy pierwszym uruchomieniu utwórz konto właściciela, potwierdzając operację `SENTINEL_API_KEY` z własnego `.env`. Potem loguj się loginem i hasłem. Token sesji pozostaje w pamięci karty; nie zapisujemy go w cookies, localStorage ani sessionStorage. `Ctrl+C` zatrzymuje procesy i klaster uruchomione przez ten skrypt; dane pozostają na dysku.
 
 Jeżeli port `54329` jest zajęty, skrypt zatrzyma się bez zmieniania istniejącej usługi. `.local/` i `.env` są ignorowane przez Git. Nie usuwaj `.local/postgres`, jeżeli chcesz zachować pomiary.
 
@@ -74,10 +74,10 @@ Monitorowane adresy mogą być zewnętrzne, mimo że **sam Sentinel jest w cało
 
 ## API
 
-Prefix `/api/v1`, nagłówek `X-API-Key`. Kontrakt: [API_SPEC.md](API_SPEC.md). OpenAPI: autoryzowany `GET /api/v1/openapi.json`. `/health/live` i `/health/ready` są publiczne i nie ujawniają konfiguracji. `GET /api/v1/system` raportuje heartbeat workera i stan kolejki alertów.
+Prefix `/api/v1`, nagłówek `Authorization: Bearer <token sesji>`. Kontrakt: [API_SPEC.md](API_SPEC.md). OpenAPI: autoryzowany `GET /api/v1/openapi.json`. `/health/live` i `/health/ready` są publiczne i nie ujawniają konfiguracji. `GET /api/v1/system` raportuje heartbeat workera i stan kolejki alertów.
 
 ```sh
-curl -H "X-API-Key: $SENTINEL_API_KEY" http://127.0.0.1:8000/api/v1/monitors
+curl -H "Authorization: Bearer $SENTINEL_SESSION_TOKEN" http://127.0.0.1:8000/api/v1/monitors
 ```
 
 Nie wystawiaj domyślnego wariantu HTTP bezpośrednio do internetu. Projekt jest obecnie przeznaczony do pracy lokalnej; zdalny dostęp wymaga osobnej konfiguracji TLS i dostępu sieciowego.
@@ -149,3 +149,7 @@ Przygotowano oddzielny build Pages i workflow publikacji. API pozostaje osobną 
 ## Wdrożenie Render Free + Neon
 
 Dodano `render.yaml`, launcher API/workera, TLS dla PostgreSQL i migrację `0003` dla zaszyfrowanych webhooków. Nie ma automatycznego przenoszenia lokalnych danych ani zmian w DnDCompanion. [Instrukcja krok po kroku](RENDER_NEON.md).
+
+## Konta i prywatne monitory
+
+Migracja `0004` wprowadza konta, Argon2id, sesje i właścicieli danych. Pierwsze konto przejmuje istniejące monitory po potwierdzeniu kluczem instalacji. Kolejne konta powstają na jednorazowe zaproszenie. Instrukcja aktualizacji, odzyskiwania dostępu i ograniczenia: [ACCOUNTS.md](ACCOUNTS.md).

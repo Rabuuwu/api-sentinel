@@ -84,3 +84,15 @@ Kanały i strony statusowe używają list UUID z walidacją istnienia po stronie
 GitHub Pages serwuje wyłącznie frontend; CORS na FastAPI dopuszcza dokładny origin. `hosted.py` wykonuje migrację, uruchamia API i worker jako dwa procesy jednej Web Service i zamyka oba przy utracie jednego. Free może usypiać tę usługę, przerywając monitoring. Domyślna architektura Compose nadal zachowuje osobne kontenery.
 
 Neon używa bezpośredniego endpointu i TLS z weryfikacją certyfikatu/hosta; transaction pooler jest niezgodny z sesyjnym advisory lock workera. Małe pule SQLAlchemy ograniczają liczbę połączeń. Nowe kanały w wariancie hosted używają ciphertext w PostgreSQL i osobnego klucza w środowisku Render. Instrukcja i ograniczenia: RENDER_NEON.md.
+
+
+## Konta i izolacja zasobów (0004)
+
+`auth.py` obsługuje hasła, zaproszenia, sesje i bootstrap właściciela; `passwords.py`
+korzysta z Argon2id w cryptography. `auth_models.py` deklaruje tabele kont i sesji.
+Każde prywatne żądanie uwierzytelnia bearer token i zapisuje user_id w sesji DB żądania.
+Zapytania app/dashboard filtrują zasoby po właścicielu; statystyki zbiorcze też mają ten zakres.
+Publiczny kontrakt korzysta z osobnej zależności DB i ograniczonego modelu odpowiedzi.
+Worker ma dostęp do wszystkich kont, ale wybiera kanały o tym samym owner_id co monitor.
+`SENTINEL_API_KEY` służy wyłącznie do pierwszego bootstrapu, nigdy jako obejście sesji.
+Dokładne zasady i ograniczenia są w ACCOUNTS.md.

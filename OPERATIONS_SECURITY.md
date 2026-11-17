@@ -1,3 +1,6 @@
+> Aktualizacja kont: obowiązuje [ACCOUNTS.md](ACCOUNTS.md). Nagłówek X-API-Key został wycofany.
+> Aktualny wariant hostingu: Render + Neon + GitHub Pages; opis lokalny poniżej dotyczy alternatywy.
+
 # Uruchamianie, bezpieczeństwo i monitoring DnD Companion
 
 ## Sposób wdrożenia
@@ -26,7 +29,7 @@ Nigdy nie commituj realnego `.env` ani webhooka. W produkcji używaj secret mana
 Na planach z cold startami pierwsza odpowiedź może przekroczyć zwykły timeout. W MVP można wybrać dłuższy timeout (np. 20–30 s), rzadsze checki i 3 kolejne porażki przed alertem. `sleep-aware` to funkcja po MVP: konfiguracja oczekiwanego okna uśpienia, oddzielna klasyfikacja `COLD_START`, retry i ograniczenie alertów. Nie da się w pełni rozpoznać cold startu z samego HTTP bez dodatkowych sygnałów. Krótkie interwały mogą zmieniać zachowanie usypiania i zużycie limitu darmowego hostingu — sprawdź aktualne warunki Render.
 
 ## Security checklist — szczególnie SSRF
-- Publicznie konfigurowalne URL w monitoringu są ryzykowne. W MVP dostęp tworzenia/edycji tylko dla administratora.
+- Publicznie konfigurowalne URL w monitoringu są ryzykowne. Dostęp tworzenia/edycji tylko dla zalogowanych użytkowników zaproszonych przez właściciela.
 - Tylko `http`/`https`; blokuj localhost, loopback, private, link-local, multicast, IPv6 ULA, adresy metadata cloud, nieprawidłowe hosty i porty niezgodne z allowlist.
 - Sprawdzaj **wszystkie** wyniki DNS i kontroluj docelowe IP także przy nawiązywaniu połączenia, aby ograniczyć DNS rebinding / TOCTOU. Preferuj bezpieczny transport, który łączy się ze zweryfikowanym IP zachowując Host/SNI.
 - W MVP wyłącz przekierowania HTTP. Jeśli je kiedyś dodasz, waliduj każdy kolejny cel.

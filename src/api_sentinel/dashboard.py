@@ -2,8 +2,9 @@ from datetime import timedelta
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, Query
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, func, select, text
 
+from api_sentinel.auth import owned_monitors, owner
 from api_sentinel.dashboard_schemas import (
     ChannelInput,
     ChannelOut,
@@ -32,13 +33,17 @@ async def validate_channels(session, ids):
     count = await session.scalar(
         select(func.count())
         .select_from(NotificationChannel)
-        .where(NotificationChannel.id.in_(ids), NotificationChannel.deleted_at.is_(None))
+        .where(
+            NotificationChannel.id.in_(ids),
+            NotificationChannel.deleted_at.is_(None),
+            NotificationChannel.owner_id == owner(session),
+        )
     )
     if count != len(ids):
         raise HTTPException(422, "Notification channel not found")
 
 
-def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings):
+def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings, PublicSession):
     vault = SecretVault(settings.secrets_dir)
 
     @router.get("/monitors/{monitor_id}/metrics", response_model=MetricsOut)
@@ -98,7 +103,10 @@ def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings
             .where(Incident.state == "OPEN")
             .subquery()
         )
-        filters: list[ColumnElement[bool]] = [Monitor.deleted_at.is_(None)]
+        filters: list[ColumnElement[bool]] = [
+            Monitor.deleted_at.is_(None),
+            Monitor.owner_id == owner(session),
+        ]
         if q:
             filters.append(Monitor.name.icontains(q, autoescape=True))
         if status:
@@ -134,17 +142,21 @@ def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings
             (
                 await session.execute(
                     select(Monitor.status, func.count())
-                    .where(Monitor.deleted_at.is_(None))
+                    .where(Monitor.deleted_at.is_(None), Monitor.owner_id == owner(session))
                     .group_by(Monitor.status)
                 )
             ).all()
         )
-        global_stats = await summary(session, start, end)
+        global_stats = await summary(session, start, end, owner_id=owner(session))
         open_count = await session.scalar(
             select(func.count())
             .select_from(Incident)
             .join(Monitor)
-            .where(Incident.state == "OPEN", Monitor.deleted_at.is_(None))
+            .where(
+                Incident.state == "OPEN",
+                Monitor.deleted_at.is_(None),
+                Monitor.owner_id == owner(session),
+            )
         )
         return {
             "items": [
@@ -178,7 +190,7 @@ def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings
         cursor: str | None = Query(None, max_length=256),
         session=Session,
     ):
-        statement = select(Incident)
+        statement = select(Incident).where(Incident.monitor_id.in_(owned_monitors(session)))
         if state:
             statement = statement.where(Incident.state == state)
         result = await page(session, statement, Incident, "created_at", limit, cursor)
@@ -201,7 +213,10 @@ def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings
             (
                 await session.scalars(
                     select(NotificationChannel)
-                    .where(NotificationChannel.deleted_at.is_(None))
+                    .where(
+                        NotificationChannel.deleted_at.is_(None),
+                        NotificationChannel.owner_id == owner(session),
+                    )
                     .order_by(NotificationChannel.created_at)
                 )
             ).all()
@@ -209,14 +224,20 @@ def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings
 
     @router.post("/notifications", status_code=201, response_model=ChannelOut)
     async def create_channel(data: ChannelInput, session=Session):
+        await session.execute(text("SELECT pg_advisory_xact_lock(71424005)"))
         count = await session.scalar(
             select(func.count())
             .select_from(NotificationChannel)
-            .where(NotificationChannel.deleted_at.is_(None))
+            .where(
+                NotificationChannel.deleted_at.is_(None),
+                NotificationChannel.owner_id == owner(session),
+            )
         )
         if count >= 50:
             raise HTTPException(409, "Notification channel limit reached")
-        channel = NotificationChannel(id=uuid4(), **data.model_dump(exclude={"webhook_url"}))
+        channel = NotificationChannel(
+            id=uuid4(), owner_id=owner(session), **data.model_dump(exclude={"webhook_url"})
+        )
         session.add(channel)
         await session.flush()
         # Immutable secret per channel ID. Rollback may leave an unreferenced private file, never
@@ -232,7 +253,11 @@ def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings
     async def get_channel(session, key):
         channel = await session.scalar(
             select(NotificationChannel)
-            .where(NotificationChannel.id == key, NotificationChannel.deleted_at.is_(None))
+            .where(
+                NotificationChannel.id == key,
+                NotificationChannel.deleted_at.is_(None),
+                NotificationChannel.owner_id == owner(session),
+            )
             .with_for_update()
         )
         if channel is None:
@@ -295,7 +320,11 @@ def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings
         count = await session.scalar(
             select(func.count())
             .select_from(Monitor)
-            .where(Monitor.id.in_(data.monitor_ids), Monitor.deleted_at.is_(None))
+            .where(
+                Monitor.id.in_(data.monitor_ids),
+                Monitor.deleted_at.is_(None),
+                Monitor.owner_id == owner(session),
+            )
         )
         if count != len(data.monitor_ids):
             raise HTTPException(422, "Monitor not found")
@@ -308,21 +337,37 @@ def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings
         return [
             as_dict(item)
             for item in (
-                await session.scalars(select(StatusPage).order_by(StatusPage.created_at))
+                await session.scalars(
+                    select(StatusPage)
+                    .where(StatusPage.owner_id == owner(session))
+                    .order_by(StatusPage.created_at)
+                )
             ).all()
         ]
 
     @router.post("/status-pages", status_code=201)
     async def create_page(data: StatusPageInput, session=Session):
+        await session.execute(text("SELECT pg_advisory_xact_lock(71424006)"))
+        count = await session.scalar(
+            select(func.count())
+            .select_from(StatusPage)
+            .where(StatusPage.owner_id == owner(session))
+        )
+        if count >= 50:
+            raise HTTPException(409, "Status page limit reached")
         await validate_page(session, data)
-        item = StatusPage(**data.model_dump())
+        item = StatusPage(owner_id=owner(session), **data.model_dump())
         session.add(item)
         await session.flush()
         return as_dict(item)
 
     @router.put("/status-pages/{page_id}")
     async def edit_page(page_id: UUID, data: StatusPageInput, session=Session):
-        item = await session.get(StatusPage, page_id)
+        item = await session.scalar(
+            select(StatusPage).where(
+                StatusPage.id == page_id, StatusPage.owner_id == owner(session)
+            )
+        )
         if item is None:
             raise HTTPException(404, "Status page not found")
         await validate_page(session, data, page_id)
@@ -332,13 +377,17 @@ def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings
 
     @router.delete("/status-pages/{page_id}", status_code=204)
     async def delete_page(page_id: UUID, session=Session):
-        item = await session.get(StatusPage, page_id)
+        item = await session.scalar(
+            select(StatusPage).where(
+                StatusPage.id == page_id, StatusPage.owner_id == owner(session)
+            )
+        )
         if item is None:
             raise HTTPException(404, "Status page not found")
         await session.delete(item)
 
     @app.get("/api/v1/public/status-pages/{slug}", response_model=PublicPage)
-    async def public_page(slug: str, session=Session):
+    async def public_page(slug: str, session=PublicSession):
         item = await session.scalar(
             select(StatusPage).where(StatusPage.slug == slug, StatusPage.published.is_(True))
         )
@@ -347,7 +396,9 @@ def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings
         monitors = (
             await session.scalars(
                 select(Monitor).where(
-                    Monitor.id.in_(item.monitor_ids), Monitor.deleted_at.is_(None)
+                    Monitor.id.in_(item.monitor_ids),
+                    Monitor.deleted_at.is_(None),
+                    Monitor.owner_id == item.owner_id,
                 )
             )
         ).all()

@@ -221,6 +221,7 @@ async def enqueue_alerts(session, monitor, incident, event, fallback):
                 await session.scalars(
                     select(NotificationChannel).where(
                         NotificationChannel.id.in_(monitor.notification_channel_ids),
+                        NotificationChannel.owner_id == monitor.owner_id,
                         NotificationChannel.deleted_at.is_(None),
                         NotificationChannel.enabled.is_(True),
                     )
@@ -236,6 +237,6 @@ async def enqueue_alerts(session, monitor, incident, event, fallback):
         if (item.on_down if event == "INCIDENT_OPENED" else item.on_recovered)
     ]
     if not monitor.notification_channel_ids:
-        targets = [fallback]
+        targets = ["console" if monitor.owner_id else fallback]
     for target in targets:
         session.add(Alert(incident_id=incident.id, event_type=event, channel=target))

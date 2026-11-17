@@ -1,3 +1,41 @@
+## Accounts and ownership — 2026-11-17
+
+Implemented locally: username/password entry, invitation-only registration, one-time owner
+bootstrap with legacy resource assignment, Argon2id PHC password hashes, opaque server-side
+sessions stored as SHA-256, logout/revoke/password change, operator recovery command,
+owner filtering on monitors/history/metrics/incidents/channels/status pages and summaries.
+Migration `0004` adds accounts, sessions, invitations, budgets and indexed owner foreign keys.
+Old API-key access is removed; legacy dashboard returns 410. No production deployment or
+production migration was performed in this change.
+
+Actual verification:
+- `pytest -q`: **117 passed, 4 skipped**, one pre-existing Starlette/httpx deprecation warning.
+- `npm test --prefix frontend`: **14 passed**, including sign-in, errors and bootstrap validation.
+- `npm run build`: **exit 0**, built in 2.23s.
+- Pages build with an explicitly dummy HTTPS endpoint: **exit 0**, built in 2.00s.
+- Ruff: **All checks passed**. Mypy: **no issues in 24 source files**.
+- `alembic upgrade head --sql`: **exit 0**, offline SQL generated, not applied.
+- `git diff --check`: passed. Shell test harness passes `bash -n`.
+
+Not verified: all four PostgreSQL integration tests, migration application/schema parity,
+real browser E2E against PostgreSQL, deployed Render/Neon authentication.
+The isolated cluster init failed with `could not create shared memory segment: Operation not
+permitted`; localhost:54339 remains unavailable. No database test was redirected to Neon.
+
+Next verification from the normal terminal:
+
+```sh
+cd /Users/macminisk/Projekty/api-sentinel
+bash scripts/test_accounts.sh
+```
+
+This starts only a dedicated local `sentinel_test` cluster and API, applies migrations, runs
+`alembic check`, Python/frontend tests, build and Playwright. Requires installed PostgreSQL
+CLI tools and a Playwright Chromium browser. Do not count skipped integration tests as success.
+Account usage, upgrade and recovery: ACCOUNTS.md. API contracts: API_SPEC.md.
+
+---
+
 ## Neon CLI integration — 2026-11-16
 
 User terminal confirmed authenticated `neon deploy` on `production`:

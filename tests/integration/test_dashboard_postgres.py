@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from account_helpers import create_identity, remove_identity
 from sqlalchemy import select, text
 from sqlalchemy.engine import make_url
 
@@ -29,6 +30,7 @@ def test_real_metrics_events_and_public_redaction(tmp_path):
     async def run():
         app = create_app(config)
         db = app.state.db
+        user_id, token = await create_identity(db)
         mid = uuid4()
         page_id = None
         try:
@@ -36,6 +38,7 @@ def test_real_metrics_events_and_public_redaction(tmp_path):
                 session.add(
                     Monitor(
                         id=mid,
+                        owner_id=user_id,
                         name="Dashboard test",
                         url="https://example.com/private",
                         degraded_latency_ms=250,
@@ -67,7 +70,7 @@ def test_real_metrics_events_and_public_redaction(tmp_path):
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=app), base_url="http://localhost"
             ) as client:
-                client.headers["X-API-Key"] = config.api_key
+                client.headers["Authorization"] = "Bearer " + token
                 page = await client.post(
                     "/api/v1/status-pages",
                     json={
@@ -99,6 +102,7 @@ def test_real_metrics_events_and_public_redaction(tmp_path):
                 )
                 await session.execute(Incident.__table__.delete().where(Incident.monitor_id == mid))
                 await session.execute(Monitor.__table__.delete().where(Monitor.id == mid))
+            await remove_identity(db, user_id)
             await db.close()
 
     asyncio.run(run())
@@ -125,12 +129,13 @@ def test_encrypted_channel_survives_api_restart_without_local_files(tmp_path):
         from uuid import UUID
 
         app = create_app(config)
+        user_id, token = await create_identity(app.state.db)
         channel_id = None
         try:
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=app),
                 base_url="http://localhost",
-                headers={"X-API-Key": config.api_key},
+                headers={"Authorization": "Bearer " + token},
             ) as client:
                 created = await client.post(
                     "/api/v1/notifications",
@@ -163,6 +168,7 @@ def test_encrypted_channel_survives_api_restart_without_local_files(tmp_path):
                             NotificationChannel.id == channel_id
                         )
                     )
+            await remove_identity(app.state.db, user_id)
             await app.state.db.close()
 
     asyncio.run(run())

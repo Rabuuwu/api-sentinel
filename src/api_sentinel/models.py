@@ -17,6 +17,7 @@ class Base(DeclarativeBase):
 class Monitor(Base):
     __tablename__ = "monitors"
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     description: Mapped[str] = mapped_column(String(1000), default="", server_default="")
     degraded_latency_ms: Mapped[int | None]
@@ -136,6 +137,7 @@ class WorkerHeartbeat(Base):
 class NotificationChannel(Base):
     __tablename__ = "notification_channels"
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     provider: Mapped[str] = mapped_column(String(20), default="discord")
     webhook_ciphertext: Mapped[str | None] = mapped_column(String(4096))
@@ -159,6 +161,7 @@ class MonitorEvent(Base):
 class StatusPage(Base):
     __tablename__ = "status_pages"
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     slug: Mapped[str] = mapped_column(String(80), unique=True)
     description: Mapped[str] = mapped_column(String(1000), default="")

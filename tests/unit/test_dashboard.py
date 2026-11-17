@@ -159,6 +159,7 @@ def test_new_admin_endpoints_require_key(app, path):
 
 
 def test_openapi_exposes_new_contracts_without_secrets(app):
+    app.dependency_overrides[app.state.authenticate] = lambda: None
     with TestClient(app, base_url="http://localhost") as client:
         response = client.get(
             "/api/v1/openapi.json", headers={"X-API-Key": "unit-test-key-" + "x" * 40}
@@ -174,7 +175,9 @@ def test_openapi_exposes_new_contracts_without_secrets(app):
 
 
 def test_commit_failure_cannot_return_false_success(app):
+    app.dependency_overrides[app.state.authenticate] = lambda: None
     session = Mock()
+    session.info = {"user_id": uuid4()}
     session.scalar = AsyncMock(return_value=0)
     session.execute = AsyncMock()
     session.flush = AsyncMock()

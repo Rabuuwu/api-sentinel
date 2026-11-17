@@ -27,7 +27,7 @@ def test_allowed_pages_preflight_and_unauthorized_response():
             headers={
                 "Origin": ORIGIN,
                 "Access-Control-Request-Method": "POST",
-                "Access-Control-Request-Headers": "x-api-key,content-type",
+                "Access-Control-Request-Headers": "authorization,content-type",
             },
         )
         assert response.status_code == 200
@@ -46,7 +46,7 @@ def test_other_origins_and_default_local_mode_are_not_allowed():
                 headers={
                     "Origin": origin,
                     "Access-Control-Request-Method": "POST",
-                    "Access-Control-Request-Headers": "x-api-key",
+                    "Access-Control-Request-Headers": "authorization",
                 },
             )
             assert "access-control-allow-origin" not in response.headers

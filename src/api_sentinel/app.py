@@ -1,5 +1,4 @@
 import base64
-import hmac
 import json
 import logging
 import time
@@ -9,17 +8,19 @@ from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
-from sqlalchemy import func, select, text, tuple_
+from sqlalchemy import String, cast, func, or_, select, text, tuple_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from api_sentinel.auth import install_auth, owned_monitors, owner
+from api_sentinel.auth_models import AuthSession, User
 from api_sentinel.config import Settings
 from api_sentinel.dashboard import install_dashboard, validate_channels
 from api_sentinel.db import Database
@@ -99,7 +100,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.db = db
     app.add_middleware(BodyLimitMiddleware)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
-    # A single local administrator: a bounded process-wide request budget, no unbounded IP map.
+    # Bounded process-wide request budget; authentication has a separate persisted budget.
     budget = {"start": time.monotonic(), "count": 0}
 
     def failure(request, status, message, code=None):
@@ -187,21 +188,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return failure(request, 500, "Unexpected server error")
 
-    async def auth(x_api_key: str = Header(default="")):
-        if not hmac.compare_digest(x_api_key.encode(), settings.api_key.encode()):
-            raise HTTPException(401, "Missing or invalid API key")
+    auth = install_auth(app, db, settings)
 
-    async def session_dependency():
+    async def public_session_dependency():
         async with db.sessions.begin() as session:
             yield session
 
+    Auth = Depends(auth)
+
+    async def session_dependency(user=Auth):
+        async with db.sessions.begin() as session:
+            session.info["user_id"] = user.id
+            yield session
+
     router = APIRouter(prefix="/api/v1", dependencies=[Depends(auth)])
-    # Commit/rollback before the response: never report success before the DB commit.
     Session = Depends(session_dependency, scope="function")
+    PublicSession = Depends(public_session_dependency, scope="function")
     app.state.session_dependency = session_dependency
 
     async def get_monitor(session, key, lock=False):
-        statement = select(Monitor).where(Monitor.id == key, Monitor.deleted_at.is_(None))
+        statement = select(Monitor).where(
+            Monitor.id == key, Monitor.deleted_at.is_(None), Monitor.owner_id == owner(session)
+        )
         monitor = await session.scalar(statement.with_for_update() if lock else statement)
         if monitor is None:
             raise HTTPException(404, "Monitor not found")
@@ -220,7 +228,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if count >= settings.max_monitors:
             raise HTTPException(409, "Monitor limit reached")
         await validate_channels(session, data.notification_channel_ids)
-        monitor = Monitor(**data.model_dump())
+        monitor = Monitor(owner_id=owner(session), **data.model_dump())
         session.add(monitor)
         await session.flush()
         session.add(MonitorEvent(monitor_id=monitor.id, action="MONITOR_CREATED"))
@@ -233,7 +241,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         cursor: str | None = Query(None, max_length=256),
         session=Session,
     ):
-        statement = select(Monitor).where(Monitor.deleted_at.is_(None))
+        statement = select(Monitor).where(
+            Monitor.deleted_at.is_(None), Monitor.owner_id == owner(session)
+        )
         if status:
             statement = statement.where(Monitor.status == status)
         return await page(session, statement, Monitor, "created_at", limit, cursor)
@@ -345,7 +355,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @router.get("/incidents/{incident_id}")
     async def incident_detail(incident_id: UUID, session=Session):
-        incident = await session.get(Incident, incident_id)
+        incident = await session.scalar(
+            select(Incident).where(
+                Incident.id == incident_id, Incident.monitor_id.in_(owned_monitors(session))
+            )
+        )
         if incident is None:
             raise HTTPException(404, "Incident not found")
         return as_dict(incident)
@@ -404,11 +418,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def system(session=Session):
         heartbeat = await session.get(WorkerHeartbeat, 1)
         fresh = bool(heartbeat and now() - heartbeat.updated_at < timedelta(seconds=90))
+        own_alert = or_(
+            Alert.incident_id.in_(
+                select(Incident.id).where(Incident.monitor_id.in_(owned_monitors(session)))
+            ),
+            Alert.channel.in_(
+                select("discord:" + cast(NotificationChannel.id, String)).where(
+                    NotificationChannel.owner_id == owner(session)
+                )
+            ),
+        )
         pending = await session.scalar(
-            select(func.count()).select_from(Alert).where(Alert.delivery_state == "PENDING")
+            select(func.count())
+            .select_from(Alert)
+            .where(Alert.delivery_state == "PENDING", own_alert)
         )
         failed = await session.scalar(
-            select(func.count()).select_from(Alert).where(Alert.delivery_state == "FAILED")
+            select(func.count())
+            .select_from(Alert)
+            .where(Alert.delivery_state == "FAILED", own_alert)
         )
         return {
             "version": "0.2.0",
@@ -424,10 +452,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "worker_last_seen": heartbeat.updated_at if heartbeat else None,
             "pending_alerts": pending,
             "failed_alerts": failed,
-            "alert_channel": "discord" if settings.discord_webhook_url else "console",
+            "alert_channel": "per-monitor channels (console when unassigned)",
         }
 
-    install_dashboard(app, router, Session, get_monitor, page, as_dict, settings)
+    install_dashboard(app, router, Session, get_monitor, page, as_dict, settings, PublicSession)
     app.include_router(router)
 
     @app.get("/health/live")
@@ -439,11 +467,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         async with db.sessions() as session:
             await session.execute(select(Monitor).limit(1))
             await session.execute(select(NotificationChannel).limit(1))
+            await session.execute(select(User.id).limit(1))
+            await session.execute(select(AuthSession.token_hash).limit(1))
         return {"status": "ready"}
 
     @app.get("/legacy", include_in_schema=False)
     async def index():
-        return FileResponse(STATIC / "index.html")
+        raise HTTPException(410, "Legacy API-key dashboard retired; use the account dashboard")
 
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
@@ -467,7 +497,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_origins=list(settings.cors_origins),
             allow_credentials=False,
             allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-            allow_headers=["X-API-Key", "Content-Type"],
+            allow_headers=["Authorization", "Content-Type"],
             expose_headers=["X-Request-ID"],
             max_age=600,
         )
