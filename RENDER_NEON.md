@@ -129,3 +129,10 @@ ponieważ lokalne pliki `.env` nie są wysyłane do hostingu.
 ## Aktualizacja do kont użytkowników
 
 Przed wdrożeniem migracji `0004` wykonaj backup bazy i przeczytaj [ACCOUNTS.md](ACCOUNTS.md). Wdróż backend i nowy frontend razem. Stary formularz API-key nie działa z nowym backendem.
+
+
+## Wiadomości Gmail
+
+Na Free używamy Gmail API, ponieważ SMTP jest blokowane. Sekrety dodajesz ręcznie w Environment;
+Blueprint nie wymusza konfiguracji poczty na instalacjach lokalnych. Pełna instrukcja:
+[GMAIL_SETUP.md](GMAIL_SETUP.md). Nie zmieniaj dotychczasowego WEBHOOK_ENCRYPTION_KEY.

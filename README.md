@@ -153,3 +153,11 @@ Dodano `render.yaml`, launcher API/workera, TLS dla PostgreSQL i migrację `0003
 ## Konta i prywatne monitory
 
 Migracja `0004` wprowadza konta, Argon2id, sesje i właścicieli danych. Pierwsze konto przejmuje istniejące monitory po potwierdzeniu kluczem instalacji. Kolejne konta powstają na jednorazowe zaproszenie. Instrukcja aktualizacji, odzyskiwania dostępu i ograniczenia: [ACCOUNTS.md](ACCOUNTS.md).
+
+
+## Gmail: potwierdzanie adresu i reset hasła
+
+Opcjonalna integracja Gmail API (HTTPS, zgodna z Render Free) dodaje potwierdzanie adresów,
+jednorazowe linki resetu i szyfrowaną kolejkę wysyłki. Konfiguracja Google i dokładne zmienne
+Rendera: [GMAIL_SETUP.md](GMAIL_SETUP.md). Bez sekretów OAuth poczta pozostaje wyłączona,
+a istniejące konta zachowują dostęp. Migracja: `0005`.

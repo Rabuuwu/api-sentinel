@@ -7,7 +7,7 @@ from uuid import uuid4
 from sqlalchemy import delete, select
 
 from api_sentinel.auth import digest
-from api_sentinel.auth_models import AuthSession, Invitation, User
+from api_sentinel.auth_models import AuthSession, EmailAction, Invitation, User
 from api_sentinel.models import (
     Alert,
     Execution,
@@ -61,6 +61,7 @@ async def remove_identity(db, key):
             await session.execute(delete(model).where(model.monitor_id.in_(monitors)))
         for model in (Monitor, NotificationChannel, StatusPage):
             await session.execute(delete(model).where(model.owner_id == key))
+        await session.execute(delete(EmailAction).where(EmailAction.user_id == key))
         await session.execute(delete(AuthSession).where(AuthSession.user_id == key))
         await session.execute(delete(Invitation).where(Invitation.created_by == key))
         await session.execute(delete(User).where(User.id == key))

@@ -1,3 +1,29 @@
+## Gmail verification and password recovery — 2026-11-17
+
+Implemented: Gmail API over HTTPS (Render Free blocks SMTP), optional OAuth sender config,
+operator-only OAuth setup script, verified recovery addresses, activation for new accounts,
+resend, password reset, durable encrypted mail queue with bounded retries, sanitized logs,
+email limits and owner-only queue counters. Migration `0005` preserves existing account access.
+Frontend includes recovery settings and explicit POST confirmation/reset (GET never consumes tokens).
+
+Actual checks:
+- `devhouse test api-sentinel`: **131 Python tests passed, 5 PostgreSQL tests skipped**;
+  **17 frontend tests passed**. One existing Starlette/httpx deprecation warning.
+- Local build: **exit 0**, 2.32s. Pages build with dummy API URL: **exit 0**, 2.29s.
+- Ruff passed; mypy passed for 27 source files; diff whitespace check passed.
+- `alembic upgrade head --sql`: SQL generated successfully (not applied).
+- Provider calls tested through httpx.MockTransport only; no actual email was sent.
+
+Still unverified: applying 0005 and running PostgreSQL integration tests, real Gmail OAuth
+setup/send/delivery, live Render/Neon end-to-end reset. Local dedicated test DB on port 54339
+is unavailable to this session; tests were not redirected to production.
+
+Run `bash scripts/test_accounts.sh` in the normal terminal for the dedicated DB checks.
+Configure Gmail using GMAIL_SETUP.md, then verify one real activation and reset with your account.
+No deployment, Google account changes or production DB mutation were performed by this change.
+
+---
+
 ## Accounts and ownership — 2026-11-17
 
 Implemented locally: username/password entry, invitation-only registration, one-time owner

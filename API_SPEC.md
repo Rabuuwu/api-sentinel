@@ -134,3 +134,26 @@ monitora/kanału — 422. Administrator także widzi tylko własne zasoby monito
 Publiczne strony statusowe zachowują dotychczasowy, ograniczony kontrakt.
 Błędy logowania są ogólne (401), limit prób zwraca 429. Sesja trwa maksymalnie 8 godzin,
 wygasa po 30 minutach bez żądań. Tokeny nie są przyjmowane w query string ani cookies.
+
+
+## Opcjonalne wiadomości kont (0005)
+
+`GET /auth/setup` dodatkowo zwraca `mail_enabled`. Przy włączonej poczcie bootstrap/register
+wymaga pola `email` i zwraca 201 `{verification_required:true,message}` zamiast sesji.
+Login niepotwierdzonego nowego konta zwraca 403 po poprawnym sprawdzeniu hasła.
+Stare konta nie są automatycznie blokowane. `GET /auth/me` dodaje własne `email`, `pending_email`
+i `mail_enabled`; lista użytkowników administratora nadal nie zawiera adresów.
+
+| Endpoint `/api/v1/auth` | Kontrakt |
+|---|---|
+| POST `/email` | Sesja + `{email,current_password}`; 202, kolejkuje potwierdzenie adresu |
+| POST `/email/resend` | Publiczny `{username,email}`; 202, ogólny komunikat |
+| POST `/email/verify` | Publiczny `{token}`; 200, potwierdza adres, unieważnia sesje; nie działa przez GET |
+| POST `/password-reset/request` | Publiczny `{email}`; zawsze taki sam komunikat 202 dla poprawnego formatu i dozwolonego limitu |
+| POST `/password-reset/confirm` | Publiczny `{token,new_password}`; 200, zmienia hasło, unieważnia wszystkie sesje i akcje |
+| GET `/email/status` | Administrator; `{enabled,deliveries:{PENDING?,SENT?,FAILED?}}`, wyłącznie liczniki |
+
+Nieaktywny moduł poczty daje 503. Limity wysyłki: 3/adres/godz., 30/globalnie/godz.; 429 po przekroczeniu.
+Niepoprawny, przeterminowany lub zużyty token daje 400. Reset: 15 minut, potwierdzenie: 60 minut.
+Tokeny write-only, nie są zwracane przez API. Adresy ASCII, maks. 254 znaki, kanonizowane małymi literami.
+Nowe hasło 15–128 znaków. Żądania nie przyjmują własnego redirect URL, From ani szablonu wiadomości.

@@ -7,6 +7,7 @@ from dotenv import dotenv_values
 
 from api_sentinel.config_errors import ConfigurationError, config_url, env_integer
 from api_sentinel.database_url import connection_options
+from api_sentinel.mail_config import normalize_email
 
 
 def environment_values() -> dict[str, str]:
@@ -42,8 +43,42 @@ class Settings:
     webhook_encryption_key: str = field(default="", repr=False)
     worker_lock_wait_seconds: int = 0
 
+    gmail_client_id: str = field(default="", repr=False)
+    gmail_client_secret: str = field(default="", repr=False)
+    gmail_refresh_token: str = field(default="", repr=False)
+    mail_from: str = ""
+    public_app_url: str = ""
+
+    @property
+    def mail_enabled(self):
+        return bool(self.gmail_refresh_token)
+
     def __post_init__(self):
         connection_options(self.database_url, self.hosted)
+        mail_values = (self.gmail_client_id, self.gmail_client_secret, self.gmail_refresh_token)
+        if any(mail_values):
+            if not all(mail_values) or not self.webhook_encryption_key or not self.mail_from:
+                raise ConfigurationError(
+                    "Gmail requires all OAuth secrets, MAIL_FROM and encryption key"
+                )
+            try:
+                object.__setattr__(self, "mail_from", normalize_email(self.mail_from))
+            except ValueError:
+                raise ConfigurationError("MAIL_FROM must be an email address") from None
+            url = config_url(self.public_app_url, "PUBLIC_APP_URL")
+            if (
+                len(self.public_app_url) > 2048
+                or url.scheme != "https"
+                or not url.hostname
+                or url.username
+                or url.password
+                or url.query
+                or url.fragment
+            ):
+                raise ConfigurationError(
+                    "PUBLIC_APP_URL must be an HTTPS dashboard URL without query or fragment"
+                )
+
         if self.webhook_encryption_key and not re.fullmatch(
             r"[0-9a-fA-F]{64}", self.webhook_encryption_key
         ):
@@ -94,6 +129,11 @@ class Settings:
         if external_host:
             hosts.append(external_host)
         return cls(
+            gmail_client_id=values.get("GMAIL_CLIENT_ID", ""),
+            gmail_client_secret=values.get("GMAIL_CLIENT_SECRET", ""),
+            gmail_refresh_token=values.get("GMAIL_REFRESH_TOKEN", ""),
+            mail_from=values.get("MAIL_FROM", ""),
+            public_app_url=values.get("PUBLIC_APP_URL", ""),
             database_url=values.get("SENTINEL_RESOLVED_DATABASE_URL", ""),
             api_key=values.get("SENTINEL_API_KEY", ""),
             check_concurrency=env_integer("CHECK_CONCURRENCY", "10", values),

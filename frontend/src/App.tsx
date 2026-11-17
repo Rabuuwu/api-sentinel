@@ -2,6 +2,7 @@ import { Component,useState,useEffect,useCallback,type ReactNode } from 'react';
 import { Navigate,Route,Routes,useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { api,setSessionToken,onSessionExpired } from './lib/api';
+import { EmailFlow } from './components/email-flow';
 import { SignIn } from './components/sign-in';
 import { Button } from './components/ui/button';
 import { Shell } from './components/shell';
@@ -18,6 +19,7 @@ export function App(){
  const clear=useCallback(()=>{setSessionToken('');void client.cancelQueries();client.clear();setAuthenticated(false);},[client]);
  useEffect(()=>{onSessionExpired(clear);return()=>onSessionExpired(()=>{});},[clear]);
  const logout=async()=>{try{await api('/auth/logout',{method:'POST'});}finally{clear();}};
+ if(window.location.hash.startsWith('#/account-link'))return <EmailFlow mode="link"/>;
  if(location.pathname.startsWith('/status/'))return <ErrorBoundary><Routes><Route path="/status/:slug" element={<PublicStatus/>}/></Routes></ErrorBoundary>;
  if(!authenticated)return <SignIn onSignedIn={()=>setAuthenticated(true)}/>;
  return <ErrorBoundary><Routes><Route element={<Shell onLogout={()=>void logout().catch(()=>{})}/>}><Route index element={<Overview/>}/><Route path="monitors" element={<Overview/>}/><Route path="monitors/:id" element={<MonitorDetails/>}/><Route path="incidents" element={<Incidents/>}/><Route path="notifications" element={<Notifications/>}/><Route path="status-pages" element={<StatusPages/>}/><Route path="settings" element={<Settings/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Route></Routes></ErrorBoundary>;

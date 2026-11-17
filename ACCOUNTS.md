@@ -55,7 +55,7 @@ nieograniczony SaaS; rejestracja jest dostępna wyłącznie na zaproszenie.
 
 ## Odzyskanie dostępu
 
-Nie ma resetu przez e-mail ani pytania bezpieczeństwa. Operator z dostępem do konfiguracji bazy
+Opcjonalny reset przez potwierdzony e-mail opisuje [GMAIL_SETUP.md](GMAIL_SETUP.md). Bez skonfigurowanej poczty operator z dostępem do konfiguracji bazy
 może uruchomić na swoim komputerze (z .env wskazującym właściwą bazę):
 
 ```sh
@@ -83,7 +83,7 @@ Tworzy wyłącznie `sentinel_test`, nie zmienia Neon. Zachowuje klaster testowy 
 Browser E2E obejmuje logowanie, zaproszenie drugiego konta i CRUD monitora.
 Wyniki faktycznych uruchomień: VERIFICATION.md.
 
-Brak MFA, e-mail verification, self-service usuwania kont, blokowania kont i współdzielonych zespołów.
+Brak MFA, self-service usuwania kont, blokowania kont i współdzielonych zespołów. Potwierdzanie e-maila jest opcjonalne przez Gmail API.
 Admin może unieważnić sesje, ale nie blokuje to ponownego logowania poprawnym hasłem.
 Globalny limit prób może czasowo zablokować innych użytkowników przy ataku — celowy limit kosztów
 małej instalacji; większe wdrożenie wymaga dodatkowego rate limitera na brzegu sieci.
@@ -94,3 +94,5 @@ Nie deklarujemy niezależnego audytu bezpieczeństwa. Render Free nadal usypia m
 Podstawa doboru zabezpieczeń: [OWASP Password Storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html),
 [OWASP Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html),
 [cryptography Argon2id](https://cryptography.io/en/latest/hazmat/primitives/key-derivation-functions/).
+
+Po włączeniu Gmail API nowe konta wymagają potwierdzenia adresu przed logowaniem. Istniejące konta pozostają aktywne i dodają adres w Settings → Recovery email.

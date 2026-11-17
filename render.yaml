@@ -28,3 +28,7 @@ services:
         value: '7'
       - key: WORKER_LOCK_WAIT_SECONDS
         value: '120'
+
+# Optional email: configure GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN,
+# MAIL_FROM and PUBLIC_APP_URL together in Render Environment. See GMAIL_SETUP.md.
+# Keep OAuth secrets out of this file. Gmail uses HTTPS; SMTP is blocked on Free.

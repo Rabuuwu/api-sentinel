@@ -72,3 +72,16 @@ zawsze mają właściciela z sesji. Checks, timeline i incydenty dziedziczą wł
 alerty przez incydent lub kanał. Query scope kontroluje backend (nie RLS); worker ma dostęp do
 wszystkich tenantów. Zachowano sesyjną blokadę singleton workera.
 Downgrade 0004 jest celowo zablokowany, aby nie usuwać kont i izolacji danych przypadkiem.
+
+
+## Migracja 0005 — poczta kont
+
+- `users.email`: nullable unikalny adres potwierdzony; `pending_email`: indeksowany adres oczekujący;
+  `requires_verification`: false dla istniejących kont, true dla nowych przy aktywnej poczcie.
+- `email_actions`: PK hash tokenu, user_id FK + indeks, purpose, email, indeksowane expires_at.
+- `mail_deliveries`: UUID PK, unique action_hash FK ON DELETE CASCADE, ciphertext nullable,
+  state, attempts, next_attempt_at, last_error (wyłącznie kod ogólny).
+
+Tokeny są zapisane jako SHA-256, a kopia potrzebna do wysłania linku jako szyfrowany Fernet payload
+związany z ID wiadomości. Po wysłaniu lub trwałym błędzie ciphertext jest usuwany. Kasowanie akcji
+atomowo usuwa kolejkę, a worker usuwa wygasłe akcje. Hasła pozostają w Argon2id.

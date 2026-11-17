@@ -11,7 +11,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from sqlalchemy import delete, func, select, text, update
 
-from api_sentinel.auth_models import AuthBudget, AuthSession, Invitation, User
+from api_sentinel.auth_models import AuthBudget, AuthSession, EmailAction, Invitation, User
+from api_sentinel.email_auth import EmailAccounts
+from api_sentinel.mail_config import normalize_email
 from api_sentinel.models import Monitor, NotificationChannel, StatusPage, now
 
 
@@ -39,11 +41,20 @@ class Credentials(BaseModel):
         return value.lower()
 
 
-class Registration(Credentials):
+class EmailCredentials(Credentials):
+    email: str | None = Field(default=None, max_length=254)
+
+    @field_validator("email")
+    @classmethod
+    def valid_email(cls, value):
+        return normalize_email(value) if value is not None else None
+
+
+class Registration(EmailCredentials):
     invitation: SecretStr = Field(min_length=32, max_length=128)
 
 
-class Bootstrap(Credentials):
+class Bootstrap(EmailCredentials):
     setup_key: SecretStr = Field(min_length=32, max_length=256)
 
 
@@ -72,25 +83,30 @@ def install_auth(app, db, settings):
         async with hashing:
             return await asyncio.to_thread(hasher.verify, encoded, password)
 
-    async def budget(label):
+    async def budget(label, namespace="auth", minutes=5, total=60, individual=8):
         # Committed separately, including failed attempts. Global limit bounds table growth
         # and hashing CPU; per-login limit survives restarts and ignores spoofed proxy IPs.
         denied = False
         async with db.sessions.begin() as session:
             await session.execute(text("SELECT pg_advisory_xact_lock(71424003)"))
             await session.execute(delete(AuthBudget).where(AuthBudget.expires_at <= now()))
-            for key, limit in (("global", 60), ("login:" + label, 8)):
+            for key, limit in (
+                (namespace + ":global", total),
+                (namespace + ":subject:" + label, individual),
+            ):
                 hashed = digest(key)
                 row = await session.get(AuthBudget, hashed)
                 if row is None:
-                    row = AuthBudget(key=hashed, count=0, expires_at=now() + timedelta(minutes=5))
+                    row = AuthBudget(
+                        key=hashed, count=0, expires_at=now() + timedelta(minutes=minutes)
+                    )
                     session.add(row)
                 row.count += 1
                 if row.count > limit:
                     denied = True
                     break
         if denied:
-            raise HTTPException(429, "Too many authentication attempts; retry in five minutes")
+            raise HTTPException(429, "Too many attempts; please try again later")
 
     async def authenticate(authorization: str = Header(default="")):
         if not authorization.startswith("Bearer ") or not 40 <= len(authorization[7:]) <= 128:
@@ -105,11 +121,12 @@ def install_auth(app, db, settings):
             ):
                 raise HTTPException(401, "Session expired; sign in again")
             user = await session.get(User, record.user_id)
-            if user is None:
+            if user is None or user.requires_verification:
                 raise HTTPException(401, "Sign in to your account")
             record.last_seen = now()
             return user
 
+    emails = EmailAccounts(db, settings, budget)
     app.state.authenticate = authenticate
     Auth = Depends(authenticate)
     router = APIRouter(prefix="/api/v1/auth", tags=["Accounts"])
@@ -141,7 +158,10 @@ def install_auth(app, db, settings):
     @router.get("/setup")
     async def setup_status():
         async with db.sessions() as session:
-            return {"setup_required": not bool(await session.scalar(select(User.id).limit(1)))}
+            return {
+                "setup_required": not bool(await session.scalar(select(User.id).limit(1))),
+                "mail_enabled": settings.mail_enabled,
+            }
 
     @router.post("/bootstrap", status_code=201)
     async def bootstrap(data: Bootstrap):
@@ -150,6 +170,10 @@ def install_auth(app, db, settings):
             data.setup_key.get_secret_value().encode(), settings.api_key.encode()
         ):
             raise HTTPException(401, "Invalid setup credentials")
+        if settings.mail_enabled:
+            if not data.email:
+                raise HTTPException(422, "Email address is required")
+            await emails.mail_budget(data.email)
         encoded = await hash_password(data.password.get_secret_value())
         async with db.sessions.begin() as session:
             await session.execute(text("SELECT pg_advisory_xact_lock(71424004)"))
@@ -162,11 +186,22 @@ def install_auth(app, db, settings):
                 await session.execute(
                     update(model).where(model.owner_id.is_(None)).values(owner_id=user.id)
                 )
+            if settings.mail_enabled:
+                user.pending_email, user.requires_verification = data.email, True
+                await emails.queue(session, user, data.email, "verify")
+                return {
+                    "verification_required": True,
+                    "message": "Check your email to activate your account.",
+                }
             return await issue(session, user)
 
     @router.post("/register", status_code=201)
     async def register(data: Registration):
         await budget(data.username)
+        if settings.mail_enabled:
+            if not data.email:
+                raise HTTPException(422, "Email address is required")
+            await emails.mail_budget(data.email)
         encoded = await hash_password(data.password.get_secret_value())
         async with db.sessions.begin() as session:
             await session.execute(text("SELECT pg_advisory_xact_lock(71424004)"))
@@ -185,6 +220,13 @@ def install_auth(app, db, settings):
             session.add(user)
             await session.flush()
             await session.delete(invite)
+            if settings.mail_enabled:
+                user.pending_email, user.requires_verification = data.email, True
+                await emails.queue(session, user, data.email, "verify")
+                return {
+                    "verification_required": True,
+                    "message": "Check your email to activate your account.",
+                }
             return await issue(session, user)
 
     @router.post("/login")
@@ -199,13 +241,20 @@ def install_auth(app, db, settings):
             )
             if user is None or not valid:
                 raise HTTPException(401, "Invalid username or password")
+            if user.requires_verification:
+                raise HTTPException(403, "Confirm your email before signing in")
             if hasher.check_needs_rehash(user.password_hash):
                 user.password_hash = await hash_password(data.password.get_secret_value())
             return await issue(session, user)
 
     @router.get("/me")
     async def me(user=Auth):
-        return public_user(user)
+        return {
+            **public_user(user),
+            "email": user.email,
+            "pending_email": user.pending_email,
+            "mail_enabled": settings.mail_enabled,
+        }
 
     @router.post("/logout", status_code=204)
     async def logout(user=Auth, authorization: str = Header()):
@@ -230,6 +279,8 @@ def install_auth(app, db, settings):
             if not await verify(current.password_hash, data.current_password.get_secret_value()):
                 raise HTTPException(400, "Invalid current password")
             current.password_hash = await hash_password(data.new_password.get_secret_value())
+            current.pending_email = None
+            await session.execute(delete(EmailAction).where(EmailAction.user_id == user.id))
             await session.execute(delete(AuthSession).where(AuthSession.user_id == user.id))
 
     @router.post("/invitations", status_code=201)
@@ -267,5 +318,6 @@ def install_auth(app, db, settings):
         async with db.sessions.begin() as session:
             await session.execute(delete(AuthSession).where(AuthSession.user_id == user_id))
 
+    emails.routes(router, Auth, hash_password, verify)
     app.include_router(router)
     return authenticate

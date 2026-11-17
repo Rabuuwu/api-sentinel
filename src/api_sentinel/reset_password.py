@@ -7,7 +7,7 @@ import sys
 from sqlalchemy import delete, select
 
 from api_sentinel.auth import Credentials
-from api_sentinel.auth_models import AuthSession, User
+from api_sentinel.auth_models import AuthSession, EmailAction, User
 from api_sentinel.config import Settings
 from api_sentinel.db import Database
 from api_sentinel.passwords import Passwords
@@ -22,6 +22,9 @@ async def reset(username: str, password: str):
             )
             if user is None:
                 raise ValueError("Account not found")
+            user.pending_email = None
+            user.requires_verification = False  # Operator recovery is an explicit override.
+            await session.execute(delete(EmailAction).where(EmailAction.user_id == user.id))
             user.password_hash = await asyncio.to_thread(Passwords().hash, password)
             await session.execute(delete(AuthSession).where(AuthSession.user_id == user.id))
     finally:

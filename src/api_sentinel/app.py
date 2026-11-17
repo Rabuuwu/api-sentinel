@@ -20,7 +20,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from api_sentinel.auth import install_auth, owned_monitors, owner
-from api_sentinel.auth_models import AuthSession, User
+from api_sentinel.auth_models import AuthSession, MailDelivery, User
 from api_sentinel.config import Settings
 from api_sentinel.dashboard import install_dashboard, validate_channels
 from api_sentinel.db import Database
@@ -467,7 +467,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         async with db.sessions() as session:
             await session.execute(select(Monitor).limit(1))
             await session.execute(select(NotificationChannel).limit(1))
-            await session.execute(select(User.id).limit(1))
+            await session.execute(select(User.id, User.email, User.requires_verification).limit(1))
+            await session.execute(select(MailDelivery.id).limit(1))
             await session.execute(select(AuthSession.token_hash).limit(1))
         return {"status": "ready"}
 

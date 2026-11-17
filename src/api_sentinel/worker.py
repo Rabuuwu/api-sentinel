@@ -9,6 +9,7 @@ from api_sentinel.alerts import send_pending
 from api_sentinel.checker import check
 from api_sentinel.config import Settings
 from api_sentinel.db import Database
+from api_sentinel.mailer import send_mail_pending
 from api_sentinel.service import housekeeping, record, recover_abandoned, reserve
 
 logger = logging.getLogger("sentinel")
@@ -64,6 +65,7 @@ async def run(settings: Settings):
             async def sender():
                 while not stop.is_set():
                     await send_pending(db, settings, stop=stop)
+                    await send_mail_pending(db, settings)
                     await wait_for_stop()
 
             async def scheduler():
