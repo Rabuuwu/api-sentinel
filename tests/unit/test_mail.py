@@ -149,3 +149,18 @@ def test_transient_provider_error_keeps_retryable_status():
         )
     assert not result.value.permanent
     assert str(result.value) == "GMAIL_SEND_FAILED"
+
+
+@pytest.mark.parametrize("reason", ["invalid_grant", "invalid_client", "deleted_client"])
+def test_oauth_error_diagnostics_use_allowlisted_codes_only(reason):
+    from api_sentinel.mailer import oauth_failure_code
+
+    response = httpx.Response(400, json={"error": reason, "error_description": "secret-token"})
+    assert oauth_failure_code(response) == "GMAIL_AUTH_" + reason.upper()
+
+
+@pytest.mark.parametrize("body", [{"error": "secret-token"}, {"error": {"secret": "value"}}, []])
+def test_unexpected_oauth_response_never_leaks_values(body):
+    from api_sentinel.mailer import oauth_failure_code
+
+    assert oauth_failure_code(httpx.Response(400, json=body)) == "GMAIL_AUTH_FAILED"

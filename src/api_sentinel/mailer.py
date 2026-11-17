@@ -45,6 +45,27 @@ class MailError(Exception):
         super().__init__(code)
 
 
+def oauth_failure_code(response):
+    # Never log descriptions, response bodies or arbitrary provider-supplied values.
+    known = {
+        "invalid_grant",
+        "invalid_client",
+        "deleted_client",
+        "unauthorized_client",
+        "access_denied",
+        "invalid_scope",
+        "admin_policy_enforced",
+    }
+    try:
+        body = response.json()
+        reason = body.get("error") if isinstance(body, dict) else None
+    except ValueError:
+        reason = None
+    if isinstance(reason, str) and reason in known:
+        return "GMAIL_AUTH_" + reason.upper()
+    return "GMAIL_AUTH_FAILED"
+
+
 async def gmail_send(settings, payload, transport=None):
     message = EmailMessage()
     message["From"] = settings.mail_from
@@ -76,7 +97,9 @@ async def gmail_send(settings, payload, transport=None):
                 },
             )
             if response.status_code != 200:
-                raise MailError("GMAIL_AUTH_FAILED", response.status_code in (400, 401, 403))
+                raise MailError(
+                    oauth_failure_code(response), response.status_code in (400, 401, 403)
+                )
             access = response.json().get("access_token")
             if not isinstance(access, str) or not access:
                 raise MailError("GMAIL_AUTH_FAILED", True)

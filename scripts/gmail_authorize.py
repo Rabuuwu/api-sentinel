@@ -1,8 +1,37 @@
 """Operator-run OAuth setup. Requests only gmail.send, writes secrets to ignored .local/."""
 
+import json
 import os
 import tempfile
 from pathlib import Path
+
+
+def load_client(source):
+    try:
+        data = json.loads(source.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError as error:
+        raise SystemExit(
+            "Invalid JSON in .local/google-oauth-client.json "
+            f"(line {error.lineno}, column {error.colno}). "
+            "Replace it with the complete Desktop OAuth JSON downloaded from Google Cloud; "
+            "do not paste only the client ID, secret or .env contents."
+        ) from None
+    except UnicodeError:
+        raise SystemExit(
+            "OAuth client file must be the UTF-8 JSON downloaded from Google"
+        ) from None
+    client = data.get("installed") if isinstance(data, dict) else None
+    if not isinstance(client, dict):
+        raise SystemExit("Expected a Desktop app OAuth JSON with an 'installed' object")
+    for name in ("client_id", "client_secret"):
+        if not isinstance(client.get(name), str) or not client[name].strip():
+            raise SystemExit("Downloaded OAuth JSON is missing " + name)
+    if (
+        client.get("auth_uri") != "https://accounts.google.com/o/oauth2/auth"
+        or client.get("token_uri") != "https://oauth2.googleapis.com/token"
+    ):
+        raise SystemExit("OAuth JSON must use the official Google authorization and token URLs")
+    return data
 
 
 def main():
@@ -16,8 +45,8 @@ def main():
             "Save the downloaded Desktop OAuth client JSON as .local/google-oauth-client.json"
         )
     source.chmod(0o600)
-    flow = InstalledAppFlow.from_client_secrets_file(
-        str(source), scopes=["https://www.googleapis.com/auth/gmail.send"]
+    flow = InstalledAppFlow.from_client_config(
+        load_client(source), scopes=["https://www.googleapis.com/auth/gmail.send"]
     )
     credentials = flow.run_local_server(
         host="127.0.0.1",

@@ -105,7 +105,10 @@ Wdróż najnowszy backend i frontend. Render launcher wykona migrację.
 
 ## Problemy i odzyskiwanie
 
-- `GMAIL_AUTH_FAILED`: sprawdź klienta, refresh token i zgodę konta; wygeneruj nowy token.
+- `GMAIL_AUTH_INVALID_CLIENT`: sprawdź pasującą parę Client ID i Client Secret.
+- `GMAIL_AUTH_INVALID_GRANT`: token wygasł, został cofnięty lub nie pasuje do klienta; ponów autoryzację i podmień wszystkie trzy sekrety z jednego pliku.
+- `GMAIL_AUTH_DELETED_CLIENT`: klient OAuth został usunięty.
+- `GMAIL_AUTH_FAILED`: nierozpoznany błąd OAuth; sprawdź klienta, refresh token i zgodę konta.
   Token może zostać unieważniony m.in. po cofnięciu zgody lub zmianie hasła Google.
 - `GMAIL_SEND_FAILED`: sprawdź, czy Gmail API jest włączone, zakres `gmail.send` zaakceptowany,
   konto nadawcy zgodne z MAIL_FROM oraz limity Google. Wyślij nowy link po naprawie konfiguracji.
