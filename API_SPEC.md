@@ -157,3 +157,38 @@ Nieaktywny moduł poczty daje 503. Limity wysyłki: 3/adres/godz., 30/globalnie/
 Niepoprawny, przeterminowany lub zużyty token daje 400. Reset: 15 minut, potwierdzenie: 60 minut.
 Tokeny write-only, nie są zwracane przez API. Adresy ASCII, maks. 254 znaki, kanonizowane małymi literami.
 Nowe hasło 15–128 znaków. Żądania nie przyjmują własnego redirect URL, From ani szablonu wiadomości.
+
+## Observation metadata and recovery hardening — 2026-11-19
+
+Monitor resources retain the stored `status` for compatibility and add:
+`last_observed_status`, `effective_status`, `freshness` (`FRESH`, `STALE`, `AWAITING`,
+`PAUSED`) and `stale_after_seconds`. Freshness expires after
+`2 * interval_seconds + timeout_seconds + 30`; future timestamps fail closed as stale.
+Paused monitors remain paused. These are derived fields and never change incidents.
+Overview filtering, sorting and status counts use effective status. Public monitor
+`status` also uses effective status, so an old UP becomes UNKNOWN rather than DOWN.
+
+Overview, monitor metrics and each public monitor expose `history`:
+`requested_start`, `requested_end`, `retention_days`, `retention_limited`,
+`first_check_at`, `last_check_at`, `completed_checks`. Bounds describe actual retained
+observations, not uninterrupted monitoring. Missing data is not success. Percentiles
+still cover successful checks only; success rate is not wall-clock uptime.
+
+Metrics expose `comparison_available`. `previous` is null unless both windows fit
+within retention, contain observations near both boundaries (two current intervals
+plus 30 seconds), and each contains at least 90% of the sample count expected at the
+current interval. This conservative heuristic may hide comparisons after interval
+changes; it does not assert continuous time coverage.
+
+`GET /api/v1/auth/email/status` remains admin-only and adds nullable `last_failure`:
+`{code, at}`. Both values come from active delivery rows; older rows may have no
+attempt timestamp. No address, token, ciphertext or provider response body is returned.
+Expired/consumed links remove their diagnostics with the queue entry.
+
+Confirmation/reset budgets are isolated by purpose and token digest. Invalid,
+expired and wrong-purpose links consume a separate invalid-link budget and cannot
+consume valid confirmation or login budgets. Within five minutes: invalid links
+30/ASGI peer and 240/global per purpose; valid links 8/token, 120/peer and 240/global
+per purpose. Global limits remain intentional overload protection, not guaranteed
+availability during a distributed attack. Counters remain transactional PostgreSQL
+records across processes/restarts; no raw tokens or IP addresses are stored as keys.

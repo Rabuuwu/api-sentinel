@@ -5,7 +5,7 @@ import secrets
 import time
 from datetime import timedelta
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from sqlalchemy import delete, func, select
 
@@ -104,10 +104,27 @@ class EmailAccounts:
             raise HTTPException(400, "Invalid or expired link")
         return user, action
 
+    async def action_budget(self, token, purpose, request):
+        from api_sentinel.auth import digest
+
+        # ASGI peer only: never parse user-controlled forwarding headers here.
+        client = request.client.host if request.client else "unknown"
+        async with self.db.sessions() as session:
+            action = await session.get(EmailAction, digest(token))
+            valid = bool(action and action.purpose == purpose and action.expires_at > now())
+        if not valid:
+            await self.budget(client, namespace="invalid-" + purpose,
+                              total=240, individual=30)
+            raise HTTPException(400, "Invalid or expired link")
+        await self.budget(digest(token), namespace="confirm-" + purpose,
+                          total=240, individual=8)
+        await self.budget(client, namespace="client-confirm-" + purpose,
+                          total=240, individual=120)
+
     def routes(self, router, Auth, hash_password, verify):
         @router.post("/email", status_code=202)
         async def bind_email(data: BindEmail, user=Auth):
-            await self.budget(user.username)
+            await self.budget(user.username, namespace="email-settings")
             await self.mail_budget(data.email)
             async with self.db.sessions.begin() as session:
                 current = await session.scalar(
@@ -137,9 +154,9 @@ class EmailAccounts:
             return GENERIC
 
         @router.post("/email/verify")
-        async def confirm(data: ActionInput):
+        async def confirm(data: ActionInput, request: Request):
             self.enabled()
-            await self.budget("email-confirm")
+            await self.action_budget(data.token.get_secret_value(), "verify", request)
             async with self.db.sessions.begin() as session:
                 user, action = await self.consume(session, data.token.get_secret_value(), "verify")
                 # Serialize address claims so duplicates produce a safe generic error.
@@ -173,9 +190,9 @@ class EmailAccounts:
             return GENERIC
 
         @router.post("/password-reset/confirm")
-        async def reset(data: ResetInput):
+        async def reset(data: ResetInput, request: Request):
             self.enabled()
-            await self.budget("reset-confirm")
+            await self.action_budget(data.token.get_secret_value(), "reset", request)
             encoded = await hash_password(data.new_password.get_secret_value())
             async with self.db.sessions.begin() as session:
                 user, _ = await self.consume(session, data.token.get_secret_value(), "reset")
@@ -196,4 +213,12 @@ class EmailAccounts:
                         )
                     ).all()
                 )
-                return {"enabled": self.settings.mail_enabled, "deliveries": counts}
+                latest = await session.scalar(
+                    select(MailDelivery).where(MailDelivery.last_error.is_not(None))
+                    .order_by(MailDelivery.last_attempt_at.desc().nulls_last()).limit(1)
+                )
+                return {
+                    "enabled": self.settings.mail_enabled, "deliveries": counts,
+                    "last_failure": ({"code": latest.last_error, "at": latest.last_attempt_at}
+                                     if latest else None),
+                }

@@ -165,7 +165,7 @@ def install_auth(app, db, settings):
 
     @router.post("/bootstrap", status_code=201)
     async def bootstrap(data: Bootstrap):
-        await budget("bootstrap")
+        await budget("bootstrap", namespace="bootstrap")
         if not hmac.compare_digest(
             data.setup_key.get_secret_value().encode(), settings.api_key.encode()
         ):
@@ -197,7 +197,7 @@ def install_auth(app, db, settings):
 
     @router.post("/register", status_code=201)
     async def register(data: Registration):
-        await budget(data.username)
+        await budget(data.username, namespace="registration")
         if settings.mail_enabled:
             if not data.email:
                 raise HTTPException(422, "Email address is required")
@@ -273,7 +273,7 @@ def install_auth(app, db, settings):
 
     @router.post("/password", status_code=204)
     async def change_password(data: PasswordChange, user=Auth):
-        await budget(user.username)
+        await budget(user.username, namespace="account-settings")
         async with db.sessions.begin() as session:
             current = await session.scalar(select(User).where(User.id == user.id).with_for_update())
             if not await verify(current.password_hash, data.current_password.get_secret_value()):
@@ -287,7 +287,7 @@ def install_auth(app, db, settings):
     async def invite(user=Auth):
         if not user.is_admin:
             raise HTTPException(403, "Administrator access required")
-        await budget(user.username)
+        await budget(user.username, namespace="account-settings")
         async with db.sessions.begin() as session:
             await session.execute(delete(Invitation).where(Invitation.expires_at <= now()))
             if (await session.scalar(select(func.count()).select_from(Invitation))) >= 20:

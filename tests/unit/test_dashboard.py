@@ -111,7 +111,17 @@ def test_public_page_contract_strips_private_fields():
             "monitors": [
                 {
                     "name": "App",
-                    "status": "UP",
+                    "status": "UNKNOWN",
+                    "freshness": "AWAITING",
+                    "effective_status": "UNKNOWN",
+                    "last_observed_status": "UNKNOWN",
+                    "stale_after_seconds": 150,
+                    "history": {
+                        "requested_start": "2026-10-19T00:00:00Z",
+                        "requested_end": "2026-11-19T00:00:00Z",
+                        "retention_days": 7, "retention_limited": True,
+                        "first_check_at": None, "last_check_at": None, "completed_checks": 0,
+                    },
                     "uptime": None,
                     "last_checked_at": None,
                     "url": "https://private.example/token",

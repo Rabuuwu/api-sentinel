@@ -71,7 +71,19 @@ class MetricBucket(MetricSummary):
     until: datetime
 
 
+class HistoryInfo(BaseModel):
+    requested_start: datetime
+    requested_end: datetime
+    retention_days: int
+    retention_limited: bool
+    first_check_at: datetime | None
+    last_check_at: datetime | None
+    completed_checks: int
+
+
 class MetricsOut(BaseModel):
+    history: HistoryInfo
+    comparison_available: bool
     monitor_id: UUID
     window: str
     start: datetime
@@ -89,6 +101,11 @@ class PublicIncident(BaseModel):
 
 
 class PublicMonitor(BaseModel):
+    history: HistoryInfo
+    freshness: str
+    effective_status: str
+    last_observed_status: str
+    stale_after_seconds: int
     name: str
     status: str
     uptime: float | None

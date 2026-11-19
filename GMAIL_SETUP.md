@@ -125,3 +125,31 @@ Wdróż najnowszy backend i frontend. Render launcher wykona migrację.
 [Google OAuth i wygasanie tokenów](https://developers.google.com/identity/protocols/oauth2),
 [Gmail API — wysyłka](https://developers.google.com/workspace/gmail/api/guides/sending),
 [Zakresy Gmail](https://developers.google.com/workspace/gmail/api/auth/scopes).
+
+## Diagnostics and acceptance after migration 0006
+
+Migration `0006` adds nullable `mail_deliveries.last_attempt_at`. Back up the database
+before deployment; the hosted launcher applies migrations before starting API/worker.
+Do not rotate WEBHOOK_ENCRYPTION_KEY merely to fix OAuth: existing queue/channel
+ciphertexts depend on it. Old delivery timestamps remain unknown; they are not invented.
+
+Settings → Recovery email shows the latest recorded error code/time among active
+links, in addition to queue counts. This is visible only to administrators. Diagnostics
+expire with their links and are not a permanent delivery audit. SENT means accepted
+by Gmail, not proof of inbox delivery.
+
+1. For `GMAIL_AUTH_INVALID_GRANT`, authorize the account again and update the matching
+   client ID, client secret and refresh token on Render as described above.
+2. For `GMAIL_AUTH_INVALID_CLIENT`/`GMAIL_AUTH_DELETED_CLIENT`, verify the OAuth client
+   configuration and install a matching credential set; never paste it into logs/chat.
+3. For `GMAIL_SEND_FAILED`, inspect provider configuration/permissions privately;
+   temporary 429/5xx deliveries retain retry/backoff. Permanent failures stop retrying.
+4. After saving configuration and redeploying, request a **new** link. Old FAILED
+   messages are not automatically resent; a new same-purpose link invalidates the old one.
+5. Acceptance on an account you control: receive and confirm email; request password
+   reset; receive mail; reset password; verify old password and old session fail, the
+   new password works and the reset link cannot be reused. Record only timestamps,
+   safe outcome/code and deployment commit, never the URL/token/password.
+
+No live email is sent by automated tests: PostgreSQL integration tests mock Google's
+HTTPS transport. Live acceptance must be recorded separately after deployment.

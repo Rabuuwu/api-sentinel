@@ -24,6 +24,7 @@ from api_sentinel.auth_models import AuthSession, MailDelivery, User
 from api_sentinel.config import Settings
 from api_sentinel.dashboard import install_dashboard, validate_channels
 from api_sentinel.db import Database
+from api_sentinel.freshness import observation
 from api_sentinel.metrics import SUCCESS
 from api_sentinel.middleware import BodyLimitMiddleware
 from api_sentinel.models import (
@@ -43,7 +44,10 @@ logger = logging.getLogger("sentinel")
 
 
 def as_dict(row):
-    return {column.name: getattr(row, column.name) for column in row.__table__.columns}
+    data = {column.name: getattr(row, column.name) for column in row.__table__.columns}
+    if isinstance(row, Monitor):
+        data.update(observation(row, now()))
+    return data
 
 
 def encode_cursor(row, field):
@@ -468,7 +472,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await session.execute(select(Monitor).limit(1))
             await session.execute(select(NotificationChannel).limit(1))
             await session.execute(select(User.id, User.email, User.requires_verification).limit(1))
-            await session.execute(select(MailDelivery.id).limit(1))
+            await session.execute(select(MailDelivery.id, MailDelivery.last_attempt_at).limit(1))
             await session.execute(select(AuthSession.token_hash).limit(1))
         return {"status": "ready"}
 

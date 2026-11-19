@@ -2,7 +2,7 @@ from datetime import timedelta
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, Query
-from sqlalchemy import ColumnElement, func, select, text
+from sqlalchemy import ColumnElement, case, func, or_, select, text
 
 from api_sentinel.auth import owned_monitors, owner
 from api_sentinel.dashboard_schemas import (
@@ -13,7 +13,8 @@ from api_sentinel.dashboard_schemas import (
     PublicPage,
     StatusPageInput,
 )
-from api_sentinel.metrics import SUCCESS, WINDOW_DAYS, Window, metrics, rate, summary
+from api_sentinel.freshness import observation
+from api_sentinel.metrics import SUCCESS, WINDOW_DAYS, Window, history_info, metrics, rate, summary
 from api_sentinel.models import (
     Alert,
     Execution,
@@ -49,7 +50,7 @@ def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings
     @router.get("/monitors/{monitor_id}/metrics", response_model=MetricsOut)
     async def monitor_metrics(monitor_id: UUID, window: Window = "24h", session=Session):
         await get_monitor(session, monitor_id)
-        return await metrics(session, monitor_id, window, now())
+        return await metrics(session, monitor_id, window, now(), settings.retention_days)
 
     @router.get("/monitors/{monitor_id}/timeline")
     async def timeline(
@@ -103,6 +104,13 @@ def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings
             .where(Incident.state == "OPEN")
             .subquery()
         )
+        effective = case(
+            (Monitor.status == "PAUSED", "PAUSED"),
+            (or_(Monitor.last_checked_at.is_(None), Monitor.last_checked_at > end,
+                 func.extract("epoch", end - Monitor.last_checked_at)
+                 > 2 * Monitor.interval_seconds + Monitor.timeout_seconds + 30), "UNKNOWN"),
+            else_=Monitor.status,
+        )
         filters: list[ColumnElement[bool]] = [
             Monitor.deleted_at.is_(None),
             Monitor.owner_id == owner(session),
@@ -110,12 +118,12 @@ def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings
         if q:
             filters.append(Monitor.name.icontains(q, autoescape=True))
         if status:
-            filters.append(Monitor.status == status)
+            filters.append(effective == status)
         total = await session.scalar(select(func.count()).select_from(Monitor).where(*filters))
         uptime = aggregate.c.successful * 100.0 / func.nullif(aggregate.c.total, 0)
         columns = {
             "name": Monitor.name,
-            "status": Monitor.status,
+            "status": effective,
             "latency": aggregate.c.latency,
             "uptime": uptime,
             "last_check": Monitor.last_checked_at,
@@ -141,9 +149,9 @@ def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings
         counts = dict(
             (
                 await session.execute(
-                    select(Monitor.status, func.count())
+                    select(effective, func.count())
                     .where(Monitor.deleted_at.is_(None), Monitor.owner_id == owner(session))
-                    .group_by(Monitor.status)
+                    .group_by(effective)
                 )
             ).all()
         )
@@ -168,6 +176,7 @@ def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings
                 }
                 for m, count, success, latency, incident in rows
             ],
+            "history": history_info(global_stats, start, end, settings.retention_days),
             "total": total,
             "offset": offset,
             "limit": limit,
@@ -416,7 +425,11 @@ def install_dashboard(app, router, Session, get_monitor, page, as_dict, settings
             output.append(
                 {
                     "name": monitor.name,
-                    "status": monitor.status,
+                    "status": observation(monitor, now())["effective_status"],
+                    **observation(monitor, now()),
+                    "history": history_info(
+                        stats, now() - timedelta(days=30), now(), settings.retention_days
+                    ),
                     "uptime": stats["uptime"],
                     "last_checked_at": monitor.last_checked_at,
                     "incidents": [

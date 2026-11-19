@@ -6,7 +6,7 @@ from uuid import uuid4
 import httpx
 import pytest
 from account_helpers import create_identity, remove_identity
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.engine import make_url
 
 from api_sentinel.app import create_app
@@ -87,6 +87,21 @@ def test_real_metrics_events_and_public_redaction(tmp_path):
                 assert public.status_code == 200
                 assert "example.com/private" not in public.text
                 assert "url" not in public.json()["monitors"][0]
+                async with db.sessions.begin() as session:
+                    await session.execute(update(Monitor).where(Monitor.id == mid).values(
+                        status="UP", last_checked_at=now()-timedelta(hours=1)))
+                stale = await client.get("/api/v1/public/status-pages/test-" + mid.hex)
+                item = stale.json()["monitors"][0]
+                assert item["status"] == "UNKNOWN" and item["freshness"] == "STALE"
+                assert item["last_observed_status"] == "UP"
+                assert item["history"]["completed_checks"] == 4
+                client.headers["Authorization"] = "Bearer " + token
+                overview = await client.get("/api/v1/overview?status=UNKNOWN")
+                assert overview.status_code == 200, overview.text
+                assert str(mid) in [m["id"] for m in overview.json()["items"]]
+                assert overview.json()["summary"]["operational"] == 0
+                async with db.sessions() as session:
+                    assert (await session.get(Monitor, mid)).status == "UP"
         finally:
             async with db.sessions.begin() as session:
                 if page_id:

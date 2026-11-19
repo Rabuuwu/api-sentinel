@@ -157,6 +157,7 @@ async def send_mail_pending(db, settings, transport=None):
             row = await session.get(MailDelivery, key)
             if row is None:
                 continue
+            row.last_attempt_at = now()
             row.attempts += 1
             row.last_error = error.code if error else None
             if error is None:

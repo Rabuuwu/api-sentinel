@@ -1,5 +1,7 @@
 # API Sentinel
 
+Bieżący zakres i otwarte poprawki: [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md), aktualizacja 2026-11-18. Lokalny audyt: 142 testy Python i 17 frontend PASS; 5 integracyjnych SKIP; build, Ruff i mypy PASS. Nie oznacza to potwierdzenia wysyłki Gmail ani pełnego E2E wdrożenia.
+
 Monitoring HTTP/HTTPS z panelem WWW. Domyślny wariant lokalny uruchamia PostgreSQL, API, worker i stronę na Twojej maszynie. Opcjonalny wariant wybrany do hostingu: **GitHub Pages + Render Free + Neon Free** — instrukcja w [RENDER_NEON.md](RENDER_NEON.md). Render Free nie zapewnia ciągłego monitoringu podczas uśpienia.
 
 **Status: implementacja 0.2 z dashboardem React, częściowo zweryfikowana.** Testy jednostkowe przechodzą. Pełne uruchomienie API–PostgreSQL–worker oraz test przeglądarkowy wymagają weryfikacji poza obecną sesją; konkretne blokady opisuje [VERIFICATION.md](VERIFICATION.md). Nie traktuj obecności kodu ani workflow CI jako dowodu zaliczenia integracji.
@@ -11,13 +13,15 @@ Monitoring HTTP/HTTPS z panelem WWW. Domyślny wariant lokalny uruchamia Postgre
 | Walidacja konfiguracji, progi 3 porażek / 2 sukcesów | Tested — testy jednostkowe |
 | Checker async, timeout, DNS, TLS, błędy HTTP | Tested — transporty testowe, bez usług produkcyjnych |
 | SSRF: wszystkie odpowiedzi DNS, przypięcie IP, Host/SNI, brak redirectów | Tested — testy jednostkowe |
-| CRUD, pauza/wznowienie, API key, historia i paginacja | Implemented — integracja czeka na weryfikację |
+| CRUD, pauza/wznowienie, konta i sesje, historia i paginacja | Implemented — integracje bieżącej wersji wymagają ponownej weryfikacji |
 | PostgreSQL, migracja, blokady, idempotencja, outbox | Implemented — integracja czeka na weryfikację |
 | Discord: retry/backoff, Retry-After, deduplikacja logiczna | Implemented — integracja czeka na weryfikację |
 | Panel WWW: monitory, statystyki, incydenty, stan workera | Implemented — test przeglądarkowy zablokowany |
 | Skrypt lokalnego uruchamiania i opcjonalny Docker Compose | Implemented — uruchomienie czeka na weryfikację |
 | Prawdziwe monitory DnD Companion | Planned — wymagają rzeczywistych adresów |
-| TLS expiry, maintenance windows, sleep-aware, multi-user | Implemented — poza bieżącym MVP |
+| Konta wielu użytkowników i izolacja monitorów | Implemented — testy integracyjne wymagają izolowanej bazy |
+| Gmail: potwierdzanie adresu i reset hasła | Implemented — rzeczywiste dostarczenie maila do potwierdzenia |
+| TLS expiry, maintenance windows, pełna obsługa przerw pomiarowych | Planned |
 
 ## Uruchamianie na Twojej maszynie
 
@@ -57,7 +61,7 @@ Compose ma lokalne serwisy `frontend`, `postgres`, jednorazowe `migrate`, `api` 
 
 W panelu wybierz „Dodaj monitor”. Podaj prawdziwy publiczny URL strony lub endpointu zdrowia backendu; adresy z dokumentacji są przykładami. Domyślnie: GET, co 300 s, timeout 20 s, oczekiwane 200–299, awaria po 3 kolejnych błędach, poprawa po 2 sukcesach.
 
-Monitorowane adresy mogą być zewnętrzne, mimo że **sam Sentinel jest w całości lokalny**. Zgodnie z pierwotną polityką SSRF checker blokuje localhost i prywatne adresy sieciowe, również w DNS. Nie wyłączaj tej ochrony na potrzeby testów: użyj transportów mock w testach lub własnego publicznego stagingu. Nie wywołuj awarii produkcyjnego DnD Companion.
+Monitorowane adresy mogą być zewnętrzne, niezależnie od lokalnego lub hostowanego wariantu Sentinela. Zgodnie z pierwotną polityką SSRF checker blokuje localhost i prywatne adresy sieciowe, również w DNS. Nie wyłączaj tej ochrony na potrzeby testów: użyj transportów mock w testach lub własnego publicznego stagingu. Nie wywołuj awarii produkcyjnego DnD Companion.
 
 ## Decyzje MVP
 
@@ -80,7 +84,7 @@ Prefix `/api/v1`, nagłówek `Authorization: Bearer <token sesji>`. Kontrakt: [A
 curl -H "Authorization: Bearer $SENTINEL_SESSION_TOKEN" http://127.0.0.1:8000/api/v1/monitors
 ```
 
-Nie wystawiaj domyślnego wariantu HTTP bezpośrednio do internetu. Projekt jest obecnie przeznaczony do pracy lokalnej; zdalny dostęp wymaga osobnej konfiguracji TLS i dostępu sieciowego.
+Nie wystawiaj domyślnego wariantu HTTP bezpośrednio do internetu. Wariant lokalny i zdalny mają osobne instrukcje; dla GitHub Pages + Render + Neon zobacz [RENDER_NEON.md](RENDER_NEON.md).
 
 ## Weryfikacja
 
@@ -100,7 +104,7 @@ Z katalogu projektu:
 
 Test integracyjny wymaga **osobnej, przeznaczonej wyłącznie na testy** lokalnej bazy `sentinel_test` z migracjami. Ustaw `SENTINEL_TEST_DATABASE_URL=postgresql+asyncpg://...@127.0.0.1:.../sentinel_test`. Następnie wykonaj migracje z `DATABASE_URL` wskazującym **tę testową bazę**, a potem `pytest -m integration`. Test odrzuca inne nazwy baz i hosty. Nie używa aplikacyjnej bazy `sentinel` i nie wykonuje automatycznie migracji. Bez zmiennej lub zależności zostanie jawnie pominięty.
 
-Workflow `.github/workflows/test.yml` przygotowuje izolowaną bazę PostgreSQL, sprawdza migracje, Ruff, mypy i pytest. Nie został jeszcze uruchomiony na GitHub.
+Workflow `.github/workflows/test.yml` przygotowuje izolowaną bazę PostgreSQL, sprawdza migracje, Ruff, mypy i pytest. Wynik GitHub Actions sprawdzaj dla konkretnego commita; audyt lokalny nie potwierdza wyniku zdalnego.
 
 Opcjonalny test panelu wymaga Playwright i przeglądarki:
 
@@ -123,7 +127,7 @@ src/api_sentinel/
   models.py, db.py        modele PostgreSQL i sesje async
   service.py             rezerwacja, zapis, incydenty, retencja
   alerts.py, worker.py    outbox i singleton scheduler
-  static/                poprzedni panel pod /legacy
+  static/                zasoby historycznego panelu; /legacy zwraca 410
 frontend/                dashboard React/TypeScript/Vite
 migrations/              Alembic i początkowy schemat SQL
 tests/                   unit i integracja PostgreSQL
@@ -161,3 +165,12 @@ Opcjonalna integracja Gmail API (HTTPS, zgodna z Render Free) dodaje potwierdzan
 jednorazowe linki resetu i szyfrowaną kolejkę wysyłki. Konfiguracja Google i dokładne zmienne
 Rendera: [GMAIL_SETUP.md](GMAIL_SETUP.md). Bez sekretów OAuth poczta pozostaje wyłączona,
 a istniejące konta zachowują dostęp. Migracja: `0005`.
+
+## Poprawki monitoringu i odzyskiwania — 2026-11-19
+
+Panel i publiczne strony rozróżniają świeże i nieaktualne obserwacje. Historia podaje
+retencję, rzeczywisty zakres prób i ograniczenia porównania okresów. Potwierdzenia
+mailowe/reset mają osobne trwałe limity, a administrator widzi bezpieczny kod i czas
+błędu dostawy. Wymagana migracja **0006**; hosted launcher wykonuje ją przed startem.
+Pełny test lokalnej bazy i E2E: `bash scripts/test_accounts.sh` w zwykłym terminalu,
+wyłącznie na dedykowanym sentinel_test. Wyniki i blokady: [VERIFICATION.md](VERIFICATION.md).

@@ -101,11 +101,24 @@ def test_email_verification_reset_and_outbox(tmp_path):
                         return httpx.Response(200, json={"access_token": "fake-access"})
                     return httpx.Response(429, json={"error": "quota"})
 
+                assert (await client.get(
+                    "/api/v1/auth/email/status",
+                    headers={"Authorization": "Bearer " + token},
+                )).status_code == 403
+                async with db.sessions.begin() as session:
+                    await session.execute(update(User).where(User.id == uid).values(is_admin=True))
                 await send_mail_pending(db, settings, httpx.MockTransport(busy_google))
+                status = await client.get("/api/v1/auth/email/status",
+                                          headers={"Authorization": "Bearer " + token})
+                assert status.status_code == 200
+                assert status.json()["last_failure"]["code"] == "GMAIL_SEND_FAILED"
+                assert status.json()["last_failure"]["at"] is not None
+                assert "ciphertext" not in status.text and "test-secret" not in status.text
                 async with db.sessions.begin() as session:
                     delivery = await session.get(MailDelivery, delivery_id)
                     assert delivery.state == "PENDING" and delivery.attempts == 1
                     assert delivery.ciphertext and delivery.next_attempt_at > now()
+                    assert delivery.last_attempt_at is not None
                     delivery.next_attempt_at = now() - timedelta(seconds=1)
                 await send_mail_pending(db, settings, httpx.MockTransport(fake_google))
                 async with db.sessions() as session:

@@ -98,6 +98,7 @@ async def run():
                 "--port",
                 str(port),
                 "--no-access-log",
+                "--no-proxy-headers",
             ],
             [sys.executable, "-m", "api_sentinel.worker"],
         ],

@@ -140,3 +140,76 @@ Zależności Pythona są obecnie dostępne — wcześniejsza blokada SQLAlchemy/
 2. Na osobnej bazie `sentinel_test` wykonać migracje, `alembic check`, testy integration zgodnie z README/CI.
 3. Uruchomić izolowaną instancję i Playwright zgodnie z frontend/README.md; ocenić desktop/tablet/mobile, klawiaturę i wykresy.
 4. Sprawdzić Compose od pustych wolumenów oraz upgrade kopii istniejącej bazy. Dopiero potem odbierać całość jako działający system.
+
+## 2026-11-19 — recovery, freshness, history and Gmail diagnostics
+
+Implemented:
+
+- Separate persisted invalid/valid confirmation budgets, per purpose/token/ASGI peer;
+  no raw forwarding-header trust in the hosted launcher. Invalid reset guesses do not
+  consume confirmation or login budgets. Hashing occurs after token preflight.
+- Derived freshness for monitor resources, effective status filtering/counts in
+  Overview, neutral badges/dots for stale data, and public UNKNOWN for stale UP.
+  Incident records are unchanged.
+- Actual history bounds/counts and retention warning in Overview/details/public views;
+  period comparisons hidden when retention, boundaries or sample density are insufficient.
+- Admin-only latest active delivery error code/time, nullable migration 0006,
+  request-new-link guidance and updated operational/API docs.
+
+Checks executed in the restricted local session:
+
+| Check | Result |
+|---|---|
+| `.venv/bin/python -m pytest -q` | **155 passed, 6 skipped**, 1 pre-existing TestClient deprecation warning |
+| `npm test --prefix frontend` | **22 passed**, 6 test files |
+| `.venv/bin/ruff check .` | PASS |
+| `.venv/bin/mypy` | PASS, 28 source files |
+| `npm run build` | PASS, TypeScript + Vite; dependency `use client` warnings |
+| `alembic upgrade head --sql` | PASS, includes nullable timestamptz addition in 0006; no DB connection |
+| `git diff --check` | PASS |
+| `bash scripts/test_accounts.sh` | BLOCKED at test PostgreSQL startup: `shmat ... Operation not permitted` |
+
+The six PostgreSQL integration cases were skipped without an explicit test URL.
+New DB tests cover concurrent invalid guesses, persisted limits after app restart,
+one-use reset under concurrency, stale public status/Overview filtering and admin-only
+mail diagnostics. These cases are implemented but **not verified against PostgreSQL
+in this session**. E2E could not start because its test database did not start.
+No production migrations, push, deploy or real emails were performed.
+
+### Remaining acceptance steps
+
+In a normal terminal, after the code changes are complete:
+
+```sh
+cd /Users/macminisk/Projekty/api-sentinel
+bash scripts/test_accounts.sh
+```
+
+This harness explicitly selects the dedicated localhost `sentinel_test`, applies
+migrations there, checks metadata, runs Python/frontend tests, builds and runs Playwright.
+It does not use the Neon URL from the application's .env. If Chromium is missing:
+`cd frontend && npx playwright install chromium`, then rerun the harness from the repo.
+
+Before production deploy: take a DB backup, confirm CI for the exact commit, deploy the
+backend (hosted launcher applies 0006) and frontend, then complete the Gmail acceptance
+sequence in GMAIL_SETUP.md. A successful provider acceptance is not inbox-delivery proof.
+Preserve the current encryption key. The live mail flow remains unverified until the
+owner records delivery, successful reset, old-session rejection and single-use link.
+
+The prior README/IMPLEMENTATION_PLAN edits were preserved. Dependency locking (AS-05)
+is a separate open backlog item, outside these four corrections.
+
+### macOS 12 browser fallback
+
+The current Playwright browser installer rejects macOS 12. An installed Google Chrome
+was found in /Applications. Opt into it without downloading bundled Chromium:
+
+```sh
+SENTINEL_E2E_BROWSER_CHANNEL=chrome bash scripts/test_accounts.sh
+```
+
+This uses Playwright's Chrome channel; it does not guarantee compatibility between
+an older Chrome on macOS 12 and the installed Playwright. If browser launch or protocol
+compatibility fails, run the unchanged default Chromium suite on supported CI/Linux.
+Do not downgrade the application dependencies just to silence the installer error.
+The fallback configuration alone is not evidence of a passing browser test.

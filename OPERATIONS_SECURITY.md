@@ -68,3 +68,20 @@ Publiczna strona statusowa jest dostępna bez klucza dopiero po ustawieniu publi
 ## Wariant Render/Neon
 
 Instrukcja RENDER_NEON.md jest obowiązująca dla opcjonalnego hostingu. Przy WEBHOOK_ENCRYPTION_KEY nowe sekrety są szyfrowane w bazie, zamiast zapisywane do plików. Render wymaga tego klucza. Lokalny tryb bez klucza nadal używa prywatnego katalogu. Nie rotuj klucza bez ponownego zaszyfrowania istniejących kanałów. Baza Neon musi być osobna od DnDCompanion i używać bezpośredniego endpointu z weryfikowanym TLS.
+
+## Recovery limits and proxy trust — 2026-11-19
+
+The hosted launcher now passes `--no-proxy-headers` to Uvicorn. Recovery limits use
+`request.client.host` (ASGI peer); application code never trusts X-Forwarded-For or
+Forwarded directly. On Render, multiple visitors may share a proxy peer and therefore
+a client budget. Token-specific budgets and separate invalid/valid namespaces prevent
+bad guesses from exhausting the valid-link allowance. Deliberate global overload
+limits still apply. This conservative default does not claim to identify individual
+Render visitors.
+
+For a custom reverse-proxy deployment, enable forwarded-header processing only after
+verifying which proxy addresses are trusted and whether the edge strips incoming
+forwarded headers. Use an explicit trusted proxy allowlist; never `*` on a directly
+reachable backend. Verify forged-header and shared-NAT behavior in that environment.
+Default local/Compose launches should likewise preserve Uvicorn's restrictive trust
+settings. The application persists hashed budget keys, counts and expiry only.

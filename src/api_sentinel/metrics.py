@@ -30,6 +30,8 @@ def percentile(values: list[float], percent: float) -> float | None:
 
 def aggregates():
     return [
+        func.min(Execution.finished_at).label("first_check_at"),
+        func.max(Execution.finished_at).label("last_check_at"),
         func.count().label("total"),
         func.count().filter(Execution.result.in_(SUCCESS)).label("successful"),
         func.count().filter(Execution.result == "DEGRADED").label("degraded"),
@@ -71,11 +73,37 @@ async def summary(session, start, end, monitor_id=None, owner_id=None):
     return serialize_summary(row)
 
 
-async def metrics(session, monitor_id, window: Window, end: datetime):
+def history_info(stats, start, end, retention_days):
+    return {
+        "requested_start": start, "requested_end": end,
+        "retention_days": retention_days,
+        "retention_limited": end - start > timedelta(days=retention_days),
+        "first_check_at": stats.get("first_check_at"),
+        "last_check_at": stats.get("last_check_at"),
+        "completed_checks": stats["total"],
+    }
+
+
+def comparable(current, previous, start, end, retention_days, interval):
+    duration = end - start
+    if duration * 2 > timedelta(days=retention_days):
+        return False
+    tolerance = timedelta(seconds=interval * 2 + 30)
+    for stats, left, right in ((current, start, end), (previous, start-duration, start)):
+        if (not stats["total"] or stats["first_check_at"] > left + tolerance
+                or stats["last_check_at"] < right - tolerance
+                or stats["total"] < duration.total_seconds() / interval * 0.9):
+            return False
+    return True
+
+
+async def metrics(session, monitor_id, window: Window, end: datetime, retention_days=30):
     duration = timedelta(days=WINDOW_DAYS[window])
     start = end - duration
     current = await summary(session, start, end, monitor_id)
     previous = await summary(session, start - duration, start, monitor_id)
+    monitor = await session.get(Monitor, monitor_id)
+    compare = comparable(current, previous, start, end, retention_days, monitor.interval_seconds)
     width = duration.total_seconds() / 60
     slot = func.floor((func.extract("epoch", Execution.finished_at) - start.timestamp()) / width)
     query = (
@@ -119,7 +147,9 @@ async def metrics(session, monitor_id, window: Window, end: datetime):
         "start": start,
         "end": end,
         "summary": current,
-        "previous": previous if previous["total"] else None,
+        "previous": previous if compare else None,
+        "comparison_available": compare,
+        "history": history_info(current, start, end, retention_days),
         "buckets": buckets,
         "latency_series": ["average_ms"],
     }

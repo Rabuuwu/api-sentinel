@@ -85,3 +85,11 @@ Downgrade 0004 jest celowo zablokowany, aby nie usuwać kont i izolacji danych p
 Tokeny są zapisane jako SHA-256, a kopia potrzebna do wysłania linku jako szyfrowany Fernet payload
 związany z ID wiadomości. Po wysłaniu lub trwałym błędzie ciphertext jest usuwany. Kasowanie akcji
 atomowo usuwa kolejkę, a worker usuwa wygasłe akcje. Hasła pozostają w Argon2id.
+
+### Migration 0006 — mail attempt timestamp
+
+Adds nullable `mail_deliveries.last_attempt_at` (timestamptz), written when a delivery
+attempt result is saved. Existing rows remain null. Downgrade drops this diagnostic
+column; tokens, password hashes and existing rows are unchanged. Application/worker
+must use the matching schema. Freshness and history metadata are computed at read time;
+no status-history rewrite or new incident is introduced by stale data.
